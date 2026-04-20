@@ -59,17 +59,28 @@ namespace backend.Parser
 
         private void ExtractAttributes(string attributesString, HtmlNode node)
         {
-            var idMatch = Regex.Match(attributesString, @"id=['""]([^'""]+)['""]", RegexOptions.IgnoreCase);
-            if (idMatch.Success)
-            {
-                node.Id = idMatch.Groups[1].Value;
-            }
+            if (string.IsNullOrWhiteSpace(attributesString)) return;
 
-            var classMatch = Regex.Match(attributesString, @"class=['""]([^'""]+)['""]", RegexOptions.IgnoreCase);
-            if (classMatch.Success)
+            var matches = Regex.Matches(attributesString, @"([a-zA-Z0-9_-]+)=['""]([^'""]+)['""]");
+
+            foreach (Match match in matches)
             {
-                string[] classes = classMatch.Groups[1].Value.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-                node.Classes.AddRange(classes);
+                string key = match.Groups[1].Value.ToLower();
+                string value = match.Groups[2].Value;
+
+                if (key == "id")
+                {
+                    node.Id = value;
+                }
+                else if (key == "class")
+                {
+                    string[] classes = value.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                    node.Classes.AddRange(classes);
+                }
+                else
+                {
+                    node.Attributes[key] = value;
+                }
             }
         }
     }
