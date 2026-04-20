@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Threading.Tasks;
 using backend.Parser;
+using backend.bfs;
 
 namespace backend
 {
@@ -71,6 +72,10 @@ namespace backend
                     Console.WriteLine($"{urutan}. Relasi: {q.RelationToPrevious} | Tag: {q.TagName} | ID: {id} | Class: {kelas} | Atribut: {atribut}");
                     urutan++;
                 }
+
+                var lhm = new HtmlNodeWithSelector(){Root = domTree, Sq = queries};
+                PrintQueue(lhm.BreadthFirstSearch());
+
             }
             catch (Exception ex)
             {
@@ -95,11 +100,32 @@ namespace backend
             string idLabel = !string.IsNullOrEmpty(node.Id) ? $" #{node.Id}" : "";
             
             Console.WriteLine($"{indent}<{node.TagName}>{idLabel}{classList}");
+
+            foreach(var kelas in node.Classes)
+            {
+                Console.Write($" .{kelas} ");
+            }
+            Console.WriteLine();
             
             foreach (var child in node.Children)
             {
                 PrintTree(child, indent + "  ");
             }
+        }
+
+
+        static void PrintQueue(List<HtmlNode> listnode)
+        {
+            Console.WriteLine("\n\n ================== HASIL TRAVERSAL ====================\n");
+            int cnt = 0;
+            foreach (var node in listnode)
+            {
+                string id = node.Id == "" ? "No ID" : node.Id;
+                string tagname = node.TagName == "" ? "No TagName" : node.TagName;
+                Console.WriteLine($"{id}: {tagname} of depth {node.Depth}");
+                cnt++;
+            }
+            Console.WriteLine($"Banyak hasil: {cnt}");
         }
     }
 }
