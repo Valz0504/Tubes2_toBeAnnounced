@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Threading.Tasks;
 using backend.Parser;
-using backend.bfs;
+using backend.Search;
 
 namespace backend
 {
@@ -74,8 +74,9 @@ namespace backend
                 }
 
                 var lhm = new HtmlNodeWithSelector(){Root = domTree, Sq = queries};
-                PrintQueue(lhm.BreadthFirstSearch());
-
+                SearchResult sr = lhm.BreadthFirstSearch();
+                SearchResult finalResult = lhm.BottomUpEvaluation(0, sr);
+                PrintSearchResult(finalResult);
             }
             catch (Exception ex)
             {
@@ -100,12 +101,6 @@ namespace backend
             string idLabel = !string.IsNullOrEmpty(node.Id) ? $" #{node.Id}" : "";
             
             Console.WriteLine($"{indent}<{node.TagName}>{idLabel}{classList}");
-
-            foreach(var kelas in node.Classes)
-            {
-                Console.Write($" .{kelas} ");
-            }
-            Console.WriteLine();
             
             foreach (var child in node.Children)
             {
@@ -114,18 +109,30 @@ namespace backend
         }
 
 
-        static void PrintQueue(List<HtmlNode> listnode)
+        static void PrintList(List<HtmlNode> listnode)
         {
-            Console.WriteLine("\n\n ================== HASIL TRAVERSAL ====================\n");
             int cnt = 0;
             foreach (var node in listnode)
             {
                 string id = node.Id == "" ? "No ID" : node.Id;
-                string tagname = node.TagName == "" ? "No TagName" : node.TagName;
-                Console.WriteLine($"{id}: {tagname} of depth {node.Depth}");
+                string classList = node.Classes.Count > 0 ? $" .{string.Join(".", node.Classes)}" : "<no class>"; 
+                // string tagname = node.TagName == "" ? "No TagName" : node.TagName;
+                Console.WriteLine($"[{id}]: {node.TagName} <{classList}> of depth {node.Depth}");
                 cnt++;
             }
             Console.WriteLine($"Banyak hasil: {cnt}");
+        }
+        static void PrintSearchResult(SearchResult sr)
+        {
+            Console.WriteLine("\n\n ================== HASIL TRAVERSAL ====================\n");
+            PrintList(sr.TraversalLog);
+            Console.WriteLine("\n\n ================== AFFECTED NODES ====================\n");
+            foreach (var ls in sr.AffectedNodes)
+            {
+                PrintList(ls);
+            }
+            Console.WriteLine("\n\n ================== SOLUTION NODES ====================\n");
+            PrintList(sr.SolutionNodes);
         }
     }
 }
