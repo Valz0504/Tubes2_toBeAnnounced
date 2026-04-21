@@ -90,7 +90,7 @@ namespace backend.Search
             if (sibling1.Parent == null || sibling2.Parent == null || sibling1.Parent != sibling2.Parent)
                 return false;
 
-            HtmlNode previousChild = null;
+            HtmlNode? previousChild = null;
             foreach (var child in sibling1.Parent.Children)
             {
                 if (child == sibling2) return previousChild == sibling1;
@@ -221,7 +221,7 @@ namespace backend.Search
 
 
 
-        public SearchResult BottomUpEvaluation(int itr = 0, SearchResult sr = null, List<(HtmlNode original, HtmlNode current)> activePaths = null)
+        public SearchResult BottomUpEvaluation(int itr = 0, SearchResult? sr = null, List<(HtmlNode original, HtmlNode current)>? activePaths = null)
         {
             /* 
             itr menunjukkan iterasi keberapa untuk dicek berdasarkan SelectorQuery yang terkait
@@ -235,13 +235,16 @@ namespace backend.Search
             }
 
             // Inisialisasi
-            if (itr == 0 && activePaths == null)
+            if (activePaths == null)
             {
                 activePaths = new List<(HtmlNode, HtmlNode)>();
-                foreach (var node in sr.SolutionNodes)
+                if (itr == 0)
                 {
-                    // Pada iterasi 0, original dan current pada activePaths masih sama
-                    activePaths.Add((node, node)); 
+                    foreach (var node in sr.SolutionNodes)
+                    {
+                        // Pada iterasi 0, original dan current pada activePaths masih sama
+                        activePaths.Add((node, node)); 
+                    }
                 }
             }
 
@@ -279,7 +282,7 @@ namespace backend.Search
                 if (relation == CombinatorType.Descendant || relation == CombinatorType.Child)
                 { 
                     // Cek parent atau ascendant sesuai tipe
-                    HtmlNode ascendant = currentNode.Parent;
+                    HtmlNode? ascendant = currentNode.Parent;
                     while (ascendant != null)
                     { //loop hingga ascendant menjadi parent nya root
                         if (IsSelected(ascendant, idx + 1))

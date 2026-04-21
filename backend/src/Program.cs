@@ -97,7 +97,36 @@ namespace backend
                     Sq = queries 
                 };
                 SearchResult finalResult = lhm.StartSearching(method == "1");
-                PrintSearchResult(finalResult);
+
+                Console.Write($"Pilih banyak output (0-{finalResult.SolutionNodes.Count}) (default = {finalResult.SolutionNodes.Count}):  ");
+                string n_kemunculan;
+                int n;
+                while (true)
+                {
+                    n_kemunculan = Console.ReadLine() ?? "";
+                    if (n_kemunculan == "")
+                    {
+                        n = finalResult.SolutionNodes.Count;
+                        break;
+                    }
+
+                    if (int.TryParse(n_kemunculan, out n))
+                    {
+                        if (n >= 0 && n <= finalResult.SolutionNodes.Count)
+                        {
+                            break;
+                        }
+                        else
+                        {
+                            Console.Write($"Angka di luar rentang. Masukkan input yang valid (0-{finalResult.SolutionNodes.Count}): ");
+                        }
+                    }
+                    else
+                    {
+                        Console.Write($"Format salah. Masukkan angka (0-{finalResult.SolutionNodes.Count}) atau tekan Enter: ");
+                    }
+                }
+                PrintSearchResult(finalResult, n);
             }
             catch (Exception ex)
             {
@@ -130,20 +159,23 @@ namespace backend
         }
 
 
-        static void PrintList(List<HtmlNode> listnode)
+        static void PrintList(List<HtmlNode> listnode, int n = -1)
         {
             int cnt = 0;
             foreach (var node in listnode)
             {
                 string id = node.Id == "" ? "No ID" : node.Id;
                 string classList = node.Classes.Count > 0 ? $" .{string.Join(".", node.Classes)}" : "<no class>"; 
-                // string tagname = node.TagName == "" ? "No TagName" : node.TagName;
                 Console.WriteLine($"[{id}]: {node.TagName} <{classList}> of depth {node.Depth}");
                 cnt++;
+                if (cnt == n)
+                {
+                    break;
+                }
             }
             Console.WriteLine($"Banyak hasil: {cnt}");
         }
-        static void PrintSearchResult(SearchResult sr)
+        static void PrintSearchResult(SearchResult sr, int n)
         {
             Console.WriteLine("\n\n ================== HASIL TRAVERSAL ====================\n");
             PrintList(sr.TraversalLog);
@@ -153,7 +185,8 @@ namespace backend
                 PrintList(ls);
             }
             Console.WriteLine("\n\n ================== SOLUTION NODES ====================\n");
-            PrintList(sr.SolutionNodes);
+            PrintList(sr.SolutionNodes, n);
+            Console.WriteLine($"Banyak solusi sesungguhnya: {sr.SolutionNodes.Count}");
         }
     }
 }
