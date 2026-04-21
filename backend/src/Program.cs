@@ -9,7 +9,7 @@ namespace backend
     {
         static async Task Main(string[] args)
         {
-            Console.WriteLine("Tester Parser");
+            Console.WriteLine("================== Parser =================");
             Console.WriteLine("Pilih metode masukan dokumen HTML:");
             Console.WriteLine("1. URL Website (Scraping)");
             Console.WriteLine("2. Masukkan Teks HTML Manual");
@@ -73,9 +73,30 @@ namespace backend
                     urutan++;
                 }
 
-                var lhm = new HtmlNodeWithSelector(){Root = domTree, Sq = queries};
-                SearchResult sr = lhm.BreadthFirstSearch();
-                SearchResult finalResult = lhm.BottomUpEvaluation(0, sr);
+                Console.WriteLine("Pilih metode search:");
+                Console.WriteLine("1. Breadth First Search (BFS)");
+                Console.WriteLine("2. Depth First Search (DFS)");
+                Console.Write("Pilihan (1/2): ");
+                
+                string method;
+                while (true)
+                {
+                    method = Console.ReadLine() ?? "";
+                    if (method == "1" || method == "2")
+                    {
+                        break;
+                    }
+                    else
+                    {
+                        Console.Write("Masukkan input yang valid (1/2): ");
+                    }
+                }
+                var lhm = new HtmlNodeWithSelector()
+                { 
+                    Root = domTree, 
+                    Sq = queries 
+                };
+                SearchResult finalResult = lhm.StartSearching(method == "1");
                 PrintSearchResult(finalResult);
             }
             catch (Exception ex)
