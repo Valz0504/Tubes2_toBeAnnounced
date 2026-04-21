@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Threading.Tasks;
 using backend.Parser;
+using backend.Search;
 
 namespace backend
 {
@@ -8,7 +9,7 @@ namespace backend
     {
         static async Task Main(string[] args)
         {
-            Console.WriteLine("Tester Parser");
+            Console.WriteLine("================== Parser =================");
             Console.WriteLine("Pilih metode masukan dokumen HTML:");
             Console.WriteLine("1. URL Website (Scraping)");
             Console.WriteLine("2. Masukkan Teks HTML Manual");
@@ -71,6 +72,61 @@ namespace backend
                     Console.WriteLine($"{urutan}. Relasi: {q.RelationToPrevious} | Tag: {q.TagName} | ID: {id} | Class: {kelas} | Atribut: {atribut}");
                     urutan++;
                 }
+
+                Console.WriteLine("Pilih metode search:");
+                Console.WriteLine("1. Breadth First Search (BFS)");
+                Console.WriteLine("2. Depth First Search (DFS)");
+                Console.Write("Pilihan (1/2): ");
+                
+                string method;
+                while (true)
+                {
+                    method = Console.ReadLine() ?? "";
+                    if (method == "1" || method == "2")
+                    {
+                        break;
+                    }
+                    else
+                    {
+                        Console.Write("Masukkan input yang valid (1/2): ");
+                    }
+                }
+                var lhm = new HtmlNodeWithSelector()
+                { 
+                    Root = domTree, 
+                    Sq = queries 
+                };
+                SearchResult finalResult = lhm.StartSearching(method == "1");
+
+                Console.Write($"Pilih banyak output (0-{finalResult.SolutionNodes.Count}) (default = {finalResult.SolutionNodes.Count}):  ");
+                string n_kemunculan;
+                int n;
+                while (true)
+                {
+                    n_kemunculan = Console.ReadLine() ?? "";
+                    if (n_kemunculan == "")
+                    {
+                        n = finalResult.SolutionNodes.Count;
+                        break;
+                    }
+
+                    if (int.TryParse(n_kemunculan, out n))
+                    {
+                        if (n >= 0 && n <= finalResult.SolutionNodes.Count)
+                        {
+                            break;
+                        }
+                        else
+                        {
+                            Console.Write($"Angka di luar rentang. Masukkan input yang valid (0-{finalResult.SolutionNodes.Count}): ");
+                        }
+                    }
+                    else
+                    {
+                        Console.Write($"Format salah. Masukkan angka (0-{finalResult.SolutionNodes.Count}) atau tekan Enter: ");
+                    }
+                }
+                PrintSearchResult(finalResult, n);
             }
             catch (Exception ex)
             {
@@ -100,6 +156,37 @@ namespace backend
             {
                 PrintTree(child, indent + "  ");
             }
+        }
+
+
+        static void PrintList(List<HtmlNode> listnode, int n = -1)
+        {
+            int cnt = 0;
+            foreach (var node in listnode)
+            {
+                string id = node.Id == "" ? "No ID" : node.Id;
+                string classList = node.Classes.Count > 0 ? $" .{string.Join(".", node.Classes)}" : "<no class>"; 
+                Console.WriteLine($"[{id}]: {node.TagName} <{classList}> of depth {node.Depth}");
+                cnt++;
+                if (cnt == n)
+                {
+                    break;
+                }
+            }
+            Console.WriteLine($"Banyak hasil: {cnt}");
+        }
+        static void PrintSearchResult(SearchResult sr, int n)
+        {
+            Console.WriteLine("\n\n ================== HASIL TRAVERSAL ====================\n");
+            PrintList(sr.TraversalLog);
+            Console.WriteLine("\n\n ================== AFFECTED NODES ====================\n");
+            foreach (var ls in sr.AffectedNodes)
+            {
+                PrintList(ls);
+            }
+            Console.WriteLine("\n\n ================== SOLUTION NODES ====================\n");
+            PrintList(sr.SolutionNodes, n);
+            Console.WriteLine($"Banyak solusi sesungguhnya: {sr.SolutionNodes.Count}");
         }
     }
 }
