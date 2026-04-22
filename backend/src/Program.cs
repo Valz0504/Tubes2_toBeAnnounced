@@ -13,6 +13,11 @@ builder.Services.AddCors(options =>
             .AllowAnyHeader()
             .AllowAnyMethod();
     });
+}); 
+
+builder.Services.ConfigureHttpJsonOptions(options =>
+{
+    options.SerializerOptions.MaxDepth = 1024;
 });
 
 var app = builder.Build();
@@ -164,10 +169,17 @@ static string? ValidateRequest(AnalyzeRequest request)
             return "URL tidak boleh kosong.";
         }
 
-        if (!Uri.TryCreate(request.Url.Trim(), UriKind.Absolute, out var uri) ||
+        string urlToTest = request.Url.Trim();
+        if (!urlToTest.StartsWith("http://", StringComparison.OrdinalIgnoreCase) && 
+            !urlToTest.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+        {
+            urlToTest = "https://" + urlToTest;
+        }
+
+        if (!Uri.TryCreate(urlToTest, UriKind.Absolute, out var uri) ||
             (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
         {
-            return "URL harus absolut dan memakai skema http atau https.";
+            return "URL tidak valid. Pastikan formatnya benar.";
         }
     }
     else if (string.IsNullOrWhiteSpace(request.Html))
