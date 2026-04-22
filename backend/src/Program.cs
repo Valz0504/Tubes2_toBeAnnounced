@@ -60,7 +60,7 @@ app.MapPost("/api/analyze", async (AnalyzeRequest request) =>
         };
 
         var searchTimer = Stopwatch.StartNew();
-        var searchResult = searcher.StartSearching(Is(request.Algorithm, "bfs"));
+        var searchResult = searcher.StartSearching(request.Algorithm?.ToLower() ?? "bfs");
         searchTimer.Stop();
 
         var mapper = new DomResponseMapper();
@@ -69,6 +69,16 @@ app.MapPost("/api/analyze", async (AnalyzeRequest request) =>
         var limitedSolutions = Is(request.ResultMode, "top")
             ? allSolutions.Take(Math.Max(0, request.Limit ?? allSolutions.Count)).ToList()
             : allSolutions;
+
+        string lcaInfo = "Cari minimal 2 elemen untuk melihat LCA.";
+        if (allSolutions.Count >= 2)
+        {
+            var lcaService = new LcaBinaryLifting(domTree, mapper.NodeCount);
+            var node1 = allSolutions[0];
+            var node2 = allSolutions[allSolutions.Count - 1];
+            var lcaNode = lcaService.FindLCA(node1, node2);
+            lcaInfo = $"LCA dari <{node1.TagName}> dan <{node2.TagName}> adalah <{lcaNode.TagName}> di Depth {lcaNode.Depth}";
+        }
 
         var affectedGroups = searchResult.AffectedNodes
             .Select((nodes, index) => new AffectedGroupDto(
@@ -94,7 +104,8 @@ app.MapPost("/api/analyze", async (AnalyzeRequest request) =>
             limitedSolutions.Count,
             scrapeTimer.Elapsed.TotalMilliseconds,
             parseTimer.Elapsed.TotalMilliseconds,
-            searchTimer.Elapsed.TotalMilliseconds
+            searchTimer.Elapsed.TotalMilliseconds,
+            lcaInfo
         );
 
         var traversalLog = searchResult.TraversalLog
@@ -192,9 +203,9 @@ static string? ValidateRequest(AnalyzeRequest request)
         return "CSS selector tidak boleh kosong.";
     }
 
-    if (!Is(request.Algorithm, "bfs") && !Is(request.Algorithm, "dfs"))
+    if (!Is(request.Algorithm, "bfs") && !Is(request.Algorithm, "dfs") && !Is(request.Algorithm, "parallel-bfs"))
     {
-        return "Algoritma harus bernilai 'bfs' atau 'dfs'.";
+        return "Algoritma harus bernilai 'bfs', 'dfs', atau 'parallel-bfs'.";
     }
 
     if (!Is(request.ResultMode, "all") && !Is(request.ResultMode, "top"))
@@ -268,7 +279,8 @@ public sealed record AnalysisStatsDto(
     int DisplayedMatches,
     double ScrapeMilliseconds,
     double ParseMilliseconds,
-    double SearchMilliseconds
+    double SearchMilliseconds,
+    string? LcaResult 
 );
 
 public sealed record DomNodeDto(

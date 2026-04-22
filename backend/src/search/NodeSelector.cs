@@ -5,6 +5,9 @@
 */
 
 using System.Collections.Generic;
+using System.Collections.Concurrent; 
+using System.Threading.Tasks;        
+using System.Linq;                   
 using backend.Parser;
 namespace backend.Search
 {
@@ -219,7 +222,42 @@ namespace backend.Search
             return sr;
         }
 
+        public SearchResult ParallelBreadthFirstSearch()
+        {
+            SearchResult sr = new SearchResult();
+            
+            var visited = new ConcurrentBag<HtmlNode>(); 
+            var solution = new ConcurrentBag<HtmlNode>();
+            var currentLevel = new ConcurrentBag<HtmlNode> { Root };
 
+            while (!currentLevel.IsEmpty)
+            {
+                var nextLevel = new ConcurrentBag<HtmlNode>();
+
+                Parallel.ForEach(currentLevel, node =>
+                {
+                    visited.Add(node);
+                    
+                    if (Sq.Count > 0 && IsSelected(node, 1))
+                    {
+                        solution.Add(node);
+                    }
+                    
+                    foreach (var neighbor in node.Children)
+                    {
+                        nextLevel.Add(neighbor);
+                    }
+                });
+
+                currentLevel = nextLevel;
+            }
+
+            sr.TraversalLog = visited.ToList();
+            sr.SolutionNodes = solution.ToList();
+            sr.AffectedNodes.Add(sr.SolutionNodes);
+            
+            return sr;
+        }
 
         public SearchResult BottomUpEvaluation(int itr = 0, SearchResult? sr = null, List<(HtmlNode original, HtmlNode current)>? activePaths = null)
         {
@@ -338,17 +376,24 @@ namespace backend.Search
             return BottomUpEvaluation(itr + 1, sr, nextPaths);
         }
 
-        public SearchResult StartSearching(bool isBFS = true)
+        public SearchResult StartSearching(string algorithm)
         {
             SearchResult sr;
-            if (isBFS)
-            {
-                sr = BreadthFirstSearch();
-            }
-            else
+            
+            if (algorithm == "dfs")
             {
                 sr = DepthFirstSearch();
             }
+            else if (algorithm == "parallel-bfs")
+            {
+                sr = ParallelBreadthFirstSearch();
+            }
+            else
+            {
+                // Default ke BFS
+                sr = BreadthFirstSearch();
+            }
+            
             return BottomUpEvaluation(0, sr);
         }
     }

@@ -675,8 +675,12 @@ function App() {
     <div className="app-shell">
       <header className="topbar">
         <div className="brand">
-          <span className="brand-mark">
-            <Icon name="graph" />
+          <span className="brand-mark" style={{ background: 'transparent', border: 'none' }}>
+            <img 
+              src="/logo.png" 
+              alt="DOM logo" 
+              style={{ width: '100%', height: '100%', objectFit: 'contain' }} 
+            />
           </span>
           <div>
             <h1>DOM Traversal</h1>
