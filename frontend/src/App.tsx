@@ -5,6 +5,7 @@ type InputMode = 'url' | 'html'
 type Algorithm = 'bfs' | 'dfs'
 type ResultMode = 'all' | 'top'
 type Theme = 'light' | 'dark'
+type ViewMode = 'idle' | 'tree' | 'traversal' // <-- TAMBAHAN STATE BARU
 
 interface DomNode {
   nodeId: number
@@ -364,6 +365,11 @@ function App() {
   const [algorithm, setAlgorithm] = useState<Algorithm>('bfs')
   const [resultMode, setResultMode] = useState<ResultMode>('all')
   const [limit, setLimit] = useState(10)
+  
+  const [viewMode, setViewMode] = useState<ViewMode>('idle')
+  const [isParsing, setIsParsing] = useState(false)
+  const [isSearching, setIsSearching] = useState(false)
+  
   const [response, setResponse] = useState<AnalyzeResponse | null>(null)
   const [error, setError] = useState('')
   const [isLoading, setIsLoading] = useState(false)
@@ -421,7 +427,7 @@ function App() {
     }, 90)
 
     return () => window.clearInterval(intervalId)
-  }, [isPlaying, response])
+  }, [isPlaying, response, viewMode])
 
   const displayDom = useMemo(() => (response ? limitTreeDepth(response.dom, visibleDepth) : null), [response, visibleDepth])
 
@@ -438,12 +444,8 @@ function App() {
   }, [layout])
 
   useEffect(() => {
-    const currentStage = treeStageRef.current
-    if (!currentStage) {
-      return
-    }
-
-    const stageElement = currentStage
+    const stageElement = treeStageRef.current
+    if (!stageElement) return
 
     function handleNativeWheel(event: globalThis.WheelEvent) {
       const currentLayout = layoutRef.current
@@ -454,7 +456,7 @@ function App() {
       event.preventDefault()
       event.stopPropagation()
 
-      const rect = stageElement.getBoundingClientRect()
+      const rect = stageElement!.getBoundingClientRect()
       const originX = event.clientX - rect.left
       const originY = event.clientY - rect.top
       const previousZoom = zoomRef.current
@@ -483,44 +485,36 @@ function App() {
   }, [response])
 
   const activeTraversalIds = useMemo(() => {
-    if (!response) {
-      return new Set<number>()
-    }
-
+    if (!response || viewMode !== 'traversal') return new Set<number>()
     return new Set(response.traversalLog.slice(0, playbackStep).map((item) => item.nodeId))
-  }, [playbackStep, response])
+  }, [playbackStep, response, viewMode])
 
-  const currentTraversalNodeId = response?.traversalLog[Math.max(0, playbackStep - 1)]?.nodeId ?? null
+  const currentTraversalNodeId = (viewMode === 'traversal' && response?.traversalLog[Math.max(0, playbackStep - 1)]?.nodeId) || null
   const selectedNode = selectedNodeId ? nodeLookup.get(selectedNodeId) ?? null : null
 
-  async function handleAnalyze(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    setIsLoading(true)
+  async function handleParse() {
+    setIsParsing(true)
     setError('')
     setResponse(null)
     setSelectedNodeId(null)
-    setPlaybackStep(0)
-    setIsPlaying(false)
-    setDragState(null)
+    setViewMode('idle')
 
     try {
       const res = await fetch(`${apiBaseUrl}/api/analyze`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          inputMode,
-          url,
-          html,
-          algorithm,
-          selector,
-          resultMode,
-          limit,
+          inputMode, url, html,
+          algorithm: 'bfs',
+          selector: '*', // Dummy selector agar backend meloloskan validasi
+          resultMode: 'all',
+          limit: 10
         }),
       })
 
       if (!res.ok) {
         const payload = (await res.json()) as AnalyzeError
-        throw new Error(payload.error || 'Analisis gagal dijalankan.')
+        throw new Error(payload.error || 'Gagal mem-parse HTML.')
       }
 
       const payload = (await res.json()) as AnalyzeResponse
@@ -532,30 +526,57 @@ function App() {
       const nextView = getFittedView(treeStageRef.current, nextLayout)
 
       setResponse(payload)
-      setPlaybackStep(payload.traversalLog.length)
-      setSelectedNodeId(payload.results[0]?.nodeId ?? payload.dom.nodeId)
-      setIsPlaying(false)
+      setViewMode('tree')
       setVisibleDepth(nextVisibleDepth)
       setZoom(nextView.zoom)
       setPan(nextView.pan)
       setDragState(null)
+      setSelectedNodeId(payload.dom.nodeId)
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Gagal mem-parse HTML.')
+    } finally {
+      setIsParsing(false)
+    }
+  }
+
+  async function handleTraverse() {
+    setIsSearching(true)
+    setError('')
+
+    try {
+      const res = await fetch(`${apiBaseUrl}/api/analyze`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          inputMode, url, html,
+          algorithm, selector, resultMode, limit,
+        }),
+      })
+
+      if (!res.ok) {
+        const payload = (await res.json()) as AnalyzeError
+        throw new Error(payload.error || 'Analisis gagal dijalankan.')
+      }
+
+      const payload = (await res.json()) as AnalyzeResponse
+      setResponse(payload)
+      setViewMode('traversal')
+      setPlaybackStep(0)
+      setIsPlaying(true)
+      setSelectedNodeId(payload.results[0]?.nodeId ?? payload.dom.nodeId)
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Analisis gagal dijalankan.')
     } finally {
-      setIsLoading(false)
+      setIsSearching(false)
     }
   }
 
   function handlePlayPause() {
-    if (!response) {
-      return
-    }
-
+    if (!response || viewMode !== 'traversal') return
     if (isPlaying) {
       setIsPlaying(false)
       return
     }
-
     setPlaybackStep((current) => (current >= response.traversalLog.length ? 0 : current))
     setIsPlaying(true)
   }
@@ -658,7 +679,7 @@ function App() {
             <Icon name="graph" />
           </span>
           <div>
-            <h1>DOM Traversal Visualizer</h1>
+            <h1>DOM Traversal</h1>
             <span>IF2211 Strategi Algoritma</span>
           </div>
         </div>
@@ -676,25 +697,15 @@ function App() {
 
       <main className="workspace">
         <aside className="sidebar">
-          <form className="control-panel" onSubmit={handleAnalyze}>
+          <div className="control-panel">
             <section className="control-section">
-              <h2>Input HTML</h2>
+              <h2>1. Input HTML</h2>
               <div className="segmented" role="group" aria-label="Mode input">
-                <button
-                  className={inputMode === 'url' ? 'active' : ''}
-                  type="button"
-                  onClick={() => setInputMode('url')}
-                >
-                  <Icon name="link" />
-                  URL
+                <button className={inputMode === 'url' ? 'active' : ''} type="button" onClick={() => setInputMode('url')}>
+                  <Icon name="link" /> URL
                 </button>
-                <button
-                  className={inputMode === 'html' ? 'active' : ''}
-                  type="button"
-                  onClick={() => setInputMode('html')}
-                >
-                  <Icon name="code" />
-                  HTML
+                <button className={inputMode === 'html' ? 'active' : ''} type="button" onClick={() => setInputMode('html')}>
+                  <Icon name="code" /> HTML
                 </button>
               </div>
 
@@ -709,75 +720,64 @@ function App() {
                   <textarea value={html} onChange={(event) => setHtml(event.target.value)} />
                 </label>
               )}
+              
+              <button 
+                className="primary-action" 
+                disabled={isParsing || isSearching} 
+                type="button" 
+                onClick={handleParse}
+                style={{ marginTop: '4px' }}
+              >
+                <Icon name="code" />
+                {isParsing ? 'Mem-parse...' : 'Parse HTML'}
+              </button>
             </section>
 
-            <section className="control-section">
-              <h2>Traversal</h2>
+            <section className={`control-section ${viewMode === 'idle' ? 'disabled-section' : ''}`}>
+              <h2>2. Traversal CSS</h2>
               <label className="field">
                 <span>CSS selector</span>
-                <input value={selector} onChange={(event) => setSelector(event.target.value)} />
+                <input value={selector} onChange={(event) => setSelector(event.target.value)} disabled={viewMode === 'idle'} />
               </label>
 
               <div className="segmented" role="group" aria-label="Algoritma traversal">
-                <button
-                  className={algorithm === 'bfs' ? 'active' : ''}
-                  type="button"
-                  onClick={() => setAlgorithm('bfs')}
-                >
+                <button className={algorithm === 'bfs' ? 'active' : ''} type="button" onClick={() => setAlgorithm('bfs')} disabled={viewMode === 'idle'}>
                   BFS
                 </button>
-                <button
-                  className={algorithm === 'dfs' ? 'active' : ''}
-                  type="button"
-                  onClick={() => setAlgorithm('dfs')}
-                >
+                <button className={algorithm === 'dfs' ? 'active' : ''} type="button" onClick={() => setAlgorithm('dfs')} disabled={viewMode === 'idle'}>
                   DFS
                 </button>
               </div>
 
               <div className="result-options">
                 <label className="radio-row">
-                  <input
-                    checked={resultMode === 'all'}
-                    name="result-mode"
-                    type="radio"
-                    onChange={() => setResultMode('all')}
-                  />
+                  <input checked={resultMode === 'all'} name="result-mode" type="radio" onChange={() => setResultMode('all')} disabled={viewMode === 'idle'} />
                   Semua kemunculan
                 </label>
                 <label className="radio-row">
-                  <input
-                    checked={resultMode === 'top'}
-                    name="result-mode"
-                    type="radio"
-                    onChange={() => setResultMode('top')}
-                  />
+                  <input checked={resultMode === 'top'} name="result-mode" type="radio" onChange={() => setResultMode('top')} disabled={viewMode === 'idle'} />
                   Top
-                  <input
-                    className="number-input"
-                    disabled={resultMode !== 'top'}
-                    min={0}
-                    type="number"
-                    value={limit}
-                    onChange={(event) => setLimit(Number(event.target.value))}
-                  />
+                  <input className="number-input" disabled={resultMode !== 'top' || viewMode === 'idle'} min={0} type="number" value={limit} onChange={(event) => setLimit(Number(event.target.value))} />
                 </label>
               </div>
+
+              <button 
+                className="primary-action" 
+                disabled={viewMode === 'idle' || isParsing || isSearching} 
+                type="button" 
+                onClick={handleTraverse}
+                style={{ marginTop: '4px' }}
+              >
+                <Icon name="search" />
+                {isSearching ? 'Mencari...' : 'Jalankan Traversal'}
+              </button>
             </section>
 
-            <button className="primary-action" disabled={isLoading} type="submit">
-              <Icon name="search" />
-              {isLoading ? 'Memproses...' : 'Jalankan Pencarian'}
-            </button>
-
             {error ? <p className="error-message">{error}</p> : null}
-          </form>
+          </div>
         </aside>
 
-        <section
-          className={isTreeFullscreen ? 'visual-area fullscreen-active' : 'visual-area'}
-          ref={visualAreaRef}
-        >
+        <section className={isTreeFullscreen ? 'visual-area fullscreen-active' : 'visual-area'} ref={visualAreaRef}>
           <div className="visual-toolbar">
             <div>
               <h2>Visualisasi DOM Tree</h2>
@@ -791,109 +791,45 @@ function App() {
             <div className="toolbar-tools">
               <div className="depth-controls">
                 <span>Depth</span>
-                <input
-                  disabled={!response}
-                  max={response?.stats.maxDepth ?? 1}
-                  min={response && response.stats.maxDepth > 0 ? 1 : 0}
-                  step={1}
-                  type="range"
-                  value={visibleDepth}
-                  onChange={(event) => handleVisibleDepthChange(Number(event.target.value))}
-                />
+                <input disabled={!response} max={response?.stats.maxDepth ?? 1} min={response && response.stats.maxDepth > 0 ? 1 : 0} step={1} type="range" value={visibleDepth} onChange={(event) => handleVisibleDepthChange(Number(event.target.value))} />
                 <strong>{visibleDepth}</strong>
               </div>
 
               <div className="playback">
-                <button className="icon-button" disabled={!response} type="button" onClick={handlePlayPause}>
+                <button className="icon-button" disabled={!response || viewMode !== 'traversal'} type="button" onClick={handlePlayPause}>
                   <Icon name={isPlaying ? 'pause' : 'play'} />
                 </button>
-                <input
-                  disabled={!response}
-                  max={response?.traversalLog.length ?? 0}
-                  min={0}
-                  type="range"
-                  value={playbackStep}
-                  onChange={(event) => setPlaybackStep(Number(event.target.value))}
-                />
-                <span>
-                  {playbackStep}/{response?.traversalLog.length ?? 0}
-                </span>
+                <input disabled={!response || viewMode !== 'traversal'} max={response?.traversalLog.length ?? 0} min={0} type="range" value={playbackStep} onChange={(event) => setPlaybackStep(Number(event.target.value))} />
+                <span>{playbackStep}/{response?.traversalLog.length ?? 0}</span>
               </div>
 
               <div className="zoom-controls">
-                <button
-                  className="icon-button"
-                  disabled={!response}
-                  title="Zoom out"
-                  type="button"
-                  onClick={() => setZoom((current) => clamp(current - 0.1, minZoom, maxZoom))}
-                >
-                  <Icon name="zoomOut" />
-                </button>
-                <input
-                  disabled={!response}
-                  max={maxZoom}
-                  min={minZoom}
-                  step={0.05}
-                  type="range"
-                  value={zoom}
-                  onChange={(event) => setZoom(Number(event.target.value))}
-                />
+                <button className="icon-button" disabled={!response} title="Zoom out" type="button" onClick={() => setZoom((current) => clamp(current - 0.1, minZoom, maxZoom))}><Icon name="zoomOut" /></button>
+                <input disabled={!response} max={maxZoom} min={minZoom} step={0.05} type="range" value={zoom} onChange={(event) => setZoom(Number(event.target.value))} />
                 <span>{Math.round(zoom * 100)}%</span>
-                <button
-                  className="icon-button"
-                  disabled={!response}
-                  title="Zoom in"
-                  type="button"
-                  onClick={() => setZoom((current) => clamp(current + 0.1, minZoom, maxZoom))}
-                >
-                  <Icon name="zoomIn" />
-                </button>
-                <button className="icon-button" disabled={!response} title="Reset view" type="button" onClick={resetTreeView}>
-                  <Icon name="reset" />
-                </button>
-                <button
-                  className="icon-button"
-                  title={isTreeFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
-                  type="button"
-                  onClick={toggleTreeFullscreen}
-                >
-                  <Icon name={isTreeFullscreen ? 'fullscreenExit' : 'fullscreen'} />
-                </button>
+                <button className="icon-button" disabled={!response} title="Zoom in" type="button" onClick={() => setZoom((current) => clamp(current + 0.1, minZoom, maxZoom))}><Icon name="zoomIn" /></button>
+                <button className="icon-button" disabled={!response} title="Reset view" type="button" onClick={resetTreeView}><Icon name="reset" /></button>
+                <button className="icon-button" title={isTreeFullscreen ? 'Exit fullscreen' : 'Fullscreen'} type="button" onClick={toggleTreeFullscreen}><Icon name={isTreeFullscreen ? 'fullscreenExit' : 'fullscreen'} /></button>
               </div>
             </div>
           </div>
 
-          <div
-            className={dragState ? 'tree-stage dragging' : 'tree-stage'}
-            onPointerCancel={finishTreeDrag}
-            onPointerDown={handleTreePointerDown}
-            onPointerMove={handleTreePointerMove}
-            onPointerUp={finishTreeDrag}
-            ref={treeStageRef}
-          >
+          <div className={dragState ? 'tree-stage dragging' : 'tree-stage'} onPointerCancel={finishTreeDrag} onPointerDown={handleTreePointerDown} onPointerMove={handleTreePointerMove} onPointerUp={finishTreeDrag} ref={treeStageRef}>
             {layout ? (
-              <div
-                className={layout.config.compact ? 'tree-transform compact' : 'tree-transform'}
-                style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }}
-              >
+              <div className={layout.config.compact ? 'tree-transform compact' : 'tree-transform'} style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }}>
                 <div className="tree-canvas" style={{ width: layout.width, height: layout.height }}>
                   <svg className="tree-edges" width={layout.width} height={layout.height}>
                     {layout.edges.map((edge) => {
                       const from = layout.nodeMap.get(edge.from)
                       const to = layout.nodeMap.get(edge.to)
-                      if (!from || !to) {
-                        return null
-                      }
+                      if (!from || !to) return null
+                      
+                      const isEdgeActive = viewMode === 'traversal' && activeTraversalIds.has(to.nodeId)
 
                       return (
                         <path
-                          className={activeTraversalIds.has(to.nodeId) ? 'edge active' : 'edge'}
-                          d={`M ${from.x + layout.config.nodeWidth / 2} ${from.y + layout.config.nodeHeight} C ${
-                            from.x + layout.config.nodeWidth / 2
-                          } ${from.y + layout.config.nodeHeight + 24}, ${to.x + layout.config.nodeWidth / 2} ${
-                            to.y - 24
-                          }, ${to.x + layout.config.nodeWidth / 2} ${to.y}`}
+                          className={isEdgeActive ? 'edge active' : 'edge'}
+                          d={`M ${from.x + layout.config.nodeWidth / 2} ${from.y + layout.config.nodeHeight} C ${from.x + layout.config.nodeWidth / 2} ${from.y + layout.config.nodeHeight + 24}, ${to.x + layout.config.nodeWidth / 2} ${to.y - 24}, ${to.x + layout.config.nodeWidth / 2} ${to.y}`}
                           key={`${edge.from}-${edge.to}`}
                         />
                       )
@@ -901,11 +837,11 @@ function App() {
                   </svg>
 
                   {layout.nodes.map((node) => {
-                    const isVisited = activeTraversalIds.has(node.nodeId)
-                    const isSolution = solutionNodeIds.has(node.nodeId)
-                    const isAffected = affectedNodeIds.has(node.nodeId)
+                    const isVisited = viewMode === 'traversal' && activeTraversalIds.has(node.nodeId)
+                    const isSolution = viewMode === 'traversal' && solutionNodeIds.has(node.nodeId)
+                    const isAffected = viewMode === 'traversal' && affectedNodeIds.has(node.nodeId)
+                    const isCurrent = viewMode === 'traversal' && currentTraversalNodeId === node.nodeId
                     const isSelected = selectedNodeId === node.nodeId
-                    const isCurrent = currentTraversalNodeId === node.nodeId
 
                     return (
                       <button
@@ -918,25 +854,16 @@ function App() {
                           isSolution ? 'solution' : '',
                           isSelected ? 'selected' : '',
                           isCurrent ? 'current' : '',
-                        ]
-                          .filter(Boolean)
-                          .join(' ')}
+                        ].filter(Boolean).join(' ')}
                         disabled={node.isSummary}
                         key={node.nodeId}
-                        style={{
-                          left: node.x,
-                          top: node.y,
-                          width: layout.config.nodeWidth,
-                          height: layout.config.nodeHeight,
-                        }}
+                        style={{ left: node.x, top: node.y, width: layout.config.nodeWidth, height: layout.config.nodeHeight }}
                         title={node.path}
                         type="button"
                         onClick={() => setSelectedNodeId(node.nodeId)}
                       >
                         <span className="node-label">{node.label}</span>
-                        <span className="node-meta">
-                          {node.isSummary ? `${node.hiddenCount} hidden` : `d${node.depth} / ${node.childCount} child`}
-                        </span>
+                        <span className="node-meta">{node.isSummary ? `${node.hiddenCount} hidden` : `d${node.depth} / ${node.childCount} child`}</span>
                       </button>
                     )
                   })}
@@ -945,7 +872,7 @@ function App() {
             ) : (
               <div className="empty-state">
                 <Icon name="graph" />
-                <h2>DOM tree siap divisualisasikan</h2>
+                <h2>Masukkan HTML di sebelah kiri</h2>
               </div>
             )}
           </div>
@@ -953,29 +880,14 @@ function App() {
 
         <aside className="inspector">
           <section className="stats-grid" aria-label="Statistik traversal">
-            <div>
-              <span>Visited</span>
-              <strong>{response?.stats.visitedCount ?? 0}</strong>
-            </div>
-            <div>
-              <span>Match</span>
-              <strong>{response?.stats.totalMatches ?? 0}</strong>
-            </div>
-            <div>
-              <span>Ditampilkan</span>
-              <strong>{response?.stats.displayedMatches ?? 0}</strong>
-            </div>
-            <div>
-              <span>Search</span>
-              <strong>{response ? formatMs(response.stats.searchMilliseconds) : '0 ms'}</strong>
-            </div>
+            <div><span>Visited</span><strong>{viewMode === 'traversal' ? (response?.stats.visitedCount ?? 0) : '-'}</strong></div>
+            <div><span>Match</span><strong>{viewMode === 'traversal' ? (response?.stats.totalMatches ?? 0) : '-'}</strong></div>
+            <div><span>Ditampilkan</span><strong>{viewMode === 'traversal' ? (response?.stats.displayedMatches ?? 0) : '-'}</strong></div>
+            <div><span>Search</span><strong>{viewMode === 'traversal' && response ? formatMs(response.stats.searchMilliseconds) : '- ms'}</strong></div>
           </section>
 
           <section className="detail-panel">
-            <div className="panel-heading">
-              <Icon name="target" />
-              <h2>Node Detail</h2>
-            </div>
+            <div className="panel-heading"><Icon name="target" /><h2>Node Detail</h2></div>
             {selectedNode ? (
               <div className="node-detail">
                 <strong>{selectedNode.label}</strong>
@@ -986,64 +898,40 @@ function App() {
                 {selectedNode.classes.length > 0 ? <span>Class: {selectedNode.classes.join(', ')}</span> : null}
                 <code>{selectedNode.path}</code>
               </div>
-            ) : (
-              <p className="muted">Pilih node pada tree atau log.</p>
-            )}
+            ) : <p className="muted">Pilih node pada tree atau log.</p>}
           </section>
 
           <section className="detail-panel">
-            <div className="panel-heading">
-              <Icon name="search" />
-              <h2>Selector</h2>
-            </div>
-            {response?.parsedSelector.length ? (
+            <div className="panel-heading"><Icon name="search" /><h2>Selector</h2></div>
+            {viewMode === 'traversal' && response?.parsedSelector.length ? (
               <>
                 <div className="selector-list">
                   {response.parsedSelector.map((query, index) => (
-                    <span className="selector-chip" key={`${query.relationToPrevious}-${query.tagName}-${index}`}>
-                      {describeSelector(query)}
-                    </span>
+                    <span className="selector-chip" key={`${query.relationToPrevious}-${query.tagName}-${index}`}>{describeSelector(query)}</span>
                   ))}
                 </div>
                 <p className="log-file">Log: {response.logFileName}</p>
               </>
-            ) : (
-              <p className="muted">Belum ada selector diproses.</p>
-            )}
+            ) : <p className="muted">Lakukan traversal untuk melihat selector.</p>}
           </section>
 
           <section className="detail-panel results-panel">
-            <div className="panel-heading">
-              <Icon name="target" />
-              <h2>Hasil</h2>
-            </div>
+            <div className="panel-heading"><Icon name="target" /><h2>Hasil</h2></div>
             <div className="scroll-list">
-              {response?.results.length ? (
+              {viewMode === 'traversal' && response?.results.length ? (
                 response.results.map((result) => (
-                  <button
-                    className={selectedNodeId === result.nodeId ? 'list-row selected' : 'list-row'}
-                    key={`${result.rank}-${result.nodeId}`}
-                    type="button"
-                    onClick={() => setSelectedNodeId(result.nodeId)}
-                  >
-                    <strong>#{result.rank}</strong>
-                    <span>{result.label}</span>
-                    <small>d{result.depth}</small>
+                  <button className={selectedNodeId === result.nodeId ? 'list-row selected' : 'list-row'} key={`${result.rank}-${result.nodeId}`} type="button" onClick={() => setSelectedNodeId(result.nodeId)}>
+                    <strong>#{result.rank}</strong><span>{result.label}</span><small>d{result.depth}</small>
                   </button>
                 ))
-              ) : (
-                <p className="muted">Belum ada hasil.</p>
-              )}
+              ) : <p className="muted">{viewMode === 'tree' ? 'Lakukan traversal untuk melihat hasil.' : 'Belum ada hasil.'}</p>}
             </div>
           </section>
 
           <section className="detail-panel log-panel">
-            <div className="panel-heading">
-              <Icon name="list" />
-              <h2>Traversal Log</h2>
-            </div>
+            <div className="panel-heading"><Icon name="list" /><h2>Traversal Log</h2></div>
             <div className="scroll-list">
-              {response?.traversalLog.length ? (
+              {viewMode === 'traversal' && response?.traversalLog.length ? (
                 response.traversalLog.map((item) => (
                   <button
                     className={[
