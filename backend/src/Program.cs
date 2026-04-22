@@ -1,192 +1,420 @@
-﻿using System;
-using System.Threading.Tasks;
+using System.Diagnostics;
+using System.Text.Json;
 using backend.Parser;
 using backend.Search;
 
-namespace backend
+var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.AddCors(options =>
 {
-    class Program
+    options.AddPolicy("Frontend", policy =>
     {
-        static async Task Main(string[] args)
+        policy.AllowAnyOrigin()
+            .AllowAnyHeader()
+            .AllowAnyMethod();
+    });
+});
+
+var app = builder.Build();
+
+app.UseCors("Frontend");
+
+app.MapGet("/api/health", () => Results.Ok(new { status = "ok" }));
+
+app.MapPost("/api/analyze", async (AnalyzeRequest request) =>
+{
+    var validationError = ValidateRequest(request);
+    if (validationError != null)
+    {
+        return Results.BadRequest(new ErrorResponse(validationError));
+    }
+
+    var inputHandler = new HtmlInputHandler();
+    var htmlParser = new HtmlParser();
+    var cssParser = new CssParser();
+
+    try
+    {
+        var scrapeTimer = Stopwatch.StartNew();
+        var isUrlInput = Is(request.InputMode, "url");
+        var html = await inputHandler.GetHtmlContentAsync(
+            isUrlInput ? "1" : "2",
+            isUrlInput ? request.Url!.Trim() : request.Html!
+        );
+        scrapeTimer.Stop();
+
+        var parseTimer = Stopwatch.StartNew();
+        var domTree = htmlParser.Parse(html);
+        var selectorQueries = cssParser.Parse(request.Selector!);
+        parseTimer.Stop();
+
+        var searcher = new HtmlNodeWithSelector
         {
-            Console.WriteLine("================== Parser =================");
-            Console.WriteLine("Pilih metode masukan dokumen HTML:");
-            Console.WriteLine("1. URL Website (Scraping)");
-            Console.WriteLine("2. Masukkan Teks HTML Manual");
-            Console.Write("Pilihan (1/2): ");
-            
-            string pilihan = Console.ReadLine() ?? "";
-            string kontenInput = "";
+            Root = domTree,
+            Sq = selectorQueries
+        };
 
-            if (pilihan == "1")
-            {
-                Console.Write("Masukkan URL (contoh: https://example.com): ");
-                kontenInput = Console.ReadLine() ?? "";
-            }
-            else if (pilihan == "2")
-            {
-                Console.WriteLine("\nMasukkan teks HTML (Ketik 'SELESAI' di baris baru untuk mengakhiri):");
-                string baris;
-                while ((baris = Console.ReadLine() ?? "") != "SELESAI")
-                {
-                    kontenInput += baris + "\n";
-                }
-            }
-            else
-            {
-                Console.WriteLine("Pilihan tidak valid. Program terminated.");
-                return;
-            }
+        var searchTimer = Stopwatch.StartNew();
+        var searchResult = searcher.StartSearching(Is(request.Algorithm, "bfs"));
+        searchTimer.Stop();
 
-            var inputHandler = new HtmlInputHandler();
-            var htmlParser = new HtmlParser();
-            var cssParser = new CssParser();
+        var mapper = new DomResponseMapper();
+        var dom = mapper.ToDto(domTree);
+        var allSolutions = searchResult.SolutionNodes;
+        var limitedSolutions = Is(request.ResultMode, "top")
+            ? allSolutions.Take(Math.Max(0, request.Limit ?? allSolutions.Count)).ToList()
+            : allSolutions;
 
-            try
-            {
-                string htmlMentah = await inputHandler.GetHtmlContentAsync(pilihan, kontenInput);
-                
-                Console.WriteLine("\nMemulai proses parsing HTML...");
-                HtmlNode domTree = htmlParser.Parse(htmlMentah);
+        var affectedGroups = searchResult.AffectedNodes
+            .Select((nodes, index) => new AffectedGroupDto(
+                index,
+                nodes.Where(mapper.HasNodeId).Select(mapper.GetNodeId).Distinct().ToList()
+            ))
+            .ToList();
 
-                Console.WriteLine("\nPohon DOM berhasil dibangun!");
-                Console.WriteLine($"Kedalaman Maksimum Tree: {HitungKedalamanMaksimum(domTree)}");
-                
-                Console.WriteLine("\n--- Dom Tree Penuh ---");
-                PrintTree(domTree, ""); 
+        var affectedNodeIds = affectedGroups
+            .SelectMany(group => group.NodeIds)
+            .Distinct()
+            .ToHashSet();
+        var solutionNodeIds = allSolutions
+            .Where(mapper.HasNodeId)
+            .Select(mapper.GetNodeId)
+            .ToHashSet();
 
-                Console.WriteLine("\n--------------------------------");
-                Console.Write("Masukkan CSS Selector: ");
-                string cssInput = Console.ReadLine() ?? "";
+        var stats = new AnalysisStatsDto(
+            mapper.NodeCount,
+            mapper.MaxDepth,
+            searchResult.TraversalLog.Count,
+            allSolutions.Count,
+            limitedSolutions.Count,
+            scrapeTimer.Elapsed.TotalMilliseconds,
+            parseTimer.Elapsed.TotalMilliseconds,
+            searchTimer.Elapsed.TotalMilliseconds
+        );
 
-                var queries = cssParser.Parse(cssInput);
+        var traversalLog = searchResult.TraversalLog
+            .Where(mapper.HasNodeId)
+            .Select((node, index) => mapper.ToTraversalDto(
+                node,
+                index + 1,
+                solutionNodeIds.Contains(mapper.GetNodeId(node)),
+                affectedNodeIds.Contains(mapper.GetNodeId(node))
+            ))
+            .ToList();
 
-                Console.WriteLine("\nHasil Parsing CSS:");
-                int urutan = 1;
-                foreach (var q in queries)
-                {
-                    string kelas = q.Classes.Count > 0 ? string.Join(", ", q.Classes) : "-";
-                    string atribut = string.IsNullOrEmpty(q.AttributeName) ? "-" : $"{q.AttributeName}={q.AttributeValue}";
-                    string id = string.IsNullOrEmpty(q.Id) ? "-" : q.Id;
+        var results = limitedSolutions
+            .Where(mapper.HasNodeId)
+            .Select((node, index) => mapper.ToResultDto(node, index + 1))
+            .ToList();
 
-                    Console.WriteLine($"{urutan}. Relasi: {q.RelationToPrevious} | Tag: {q.TagName} | ID: {id} | Class: {kelas} | Atribut: {atribut}");
-                    urutan++;
-                }
+        var parsedSelector = selectorQueries.Select(ToSelectorDto).ToList();
+        var logFileName = await SaveTraversalLogAsync(
+            app.Environment.ContentRootPath,
+            new TraversalLogFileDto(
+                DateTimeOffset.UtcNow,
+                request.InputMode ?? "",
+                request.Algorithm ?? "",
+                request.Selector ?? "",
+                stats,
+                traversalLog,
+                results,
+                affectedGroups,
+                parsedSelector
+            )
+        );
 
-                Console.WriteLine("Pilih metode search:");
-                Console.WriteLine("1. Breadth First Search (BFS)");
-                Console.WriteLine("2. Depth First Search (DFS)");
-                Console.Write("Pilihan (1/2): ");
-                
-                string method;
-                while (true)
-                {
-                    method = Console.ReadLine() ?? "";
-                    if (method == "1" || method == "2")
-                    {
-                        break;
-                    }
-                    else
-                    {
-                        Console.Write("Masukkan input yang valid (1/2): ");
-                    }
-                }
-                var lhm = new HtmlNodeWithSelector()
-                { 
-                    Root = domTree, 
-                    Sq = queries 
-                };
-                SearchResult finalResult = lhm.StartSearching(method == "1");
+        var response = new AnalyzeResponse(
+            dom,
+            stats,
+            traversalLog,
+            results,
+            affectedGroups,
+            parsedSelector,
+            logFileName
+        );
 
-                Console.Write($"Pilih banyak output (0-{finalResult.SolutionNodes.Count}) (default = {finalResult.SolutionNodes.Count}):  ");
-                string n_kemunculan;
-                int n;
-                while (true)
-                {
-                    n_kemunculan = Console.ReadLine() ?? "";
-                    if (n_kemunculan == "")
-                    {
-                        n = finalResult.SolutionNodes.Count;
-                        break;
-                    }
+        return Results.Ok(response);
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new ErrorResponse(ex.Message));
+    }
+});
 
-                    if (int.TryParse(n_kemunculan, out n))
-                    {
-                        if (n >= 0 && n <= finalResult.SolutionNodes.Count)
-                        {
-                            break;
-                        }
-                        else
-                        {
-                            Console.Write($"Angka di luar rentang. Masukkan input yang valid (0-{finalResult.SolutionNodes.Count}): ");
-                        }
-                    }
-                    else
-                    {
-                        Console.Write($"Format salah. Masukkan angka (0-{finalResult.SolutionNodes.Count}) atau tekan Enter: ");
-                    }
-                }
-                PrintSearchResult(finalResult, n);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"\n[Error] Terjadi kesalahan: {ex.Message}");
-            }
+if (Directory.Exists(Path.Combine(app.Environment.ContentRootPath, "wwwroot")))
+{
+    app.UseDefaultFiles();
+    app.UseStaticFiles();
+    app.MapFallbackToFile("index.html");
+}
+
+app.Run();
+
+static string? ValidateRequest(AnalyzeRequest request)
+{
+    if (!Is(request.InputMode, "url") && !Is(request.InputMode, "html"))
+    {
+        return "Mode input harus bernilai 'url' atau 'html'.";
+    }
+
+    if (Is(request.InputMode, "url"))
+    {
+        if (string.IsNullOrWhiteSpace(request.Url))
+        {
+            return "URL tidak boleh kosong.";
         }
 
-        static int HitungKedalamanMaksimum(HtmlNode node)
+        if (!Uri.TryCreate(request.Url.Trim(), UriKind.Absolute, out var uri) ||
+            (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
         {
-            if (node.Children.Count == 0) return node.Depth;
-            int maxDepth = 0;
-            foreach (var child in node.Children)
-            {
-                maxDepth = Math.Max(maxDepth, HitungKedalamanMaksimum(child));
-            }
-            return maxDepth;
+            return "URL harus absolut dan memakai skema http atau https.";
+        }
+    }
+    else if (string.IsNullOrWhiteSpace(request.Html))
+    {
+        return "Teks HTML tidak boleh kosong.";
+    }
+
+    if (string.IsNullOrWhiteSpace(request.Selector))
+    {
+        return "CSS selector tidak boleh kosong.";
+    }
+
+    if (!Is(request.Algorithm, "bfs") && !Is(request.Algorithm, "dfs"))
+    {
+        return "Algoritma harus bernilai 'bfs' atau 'dfs'.";
+    }
+
+    if (!Is(request.ResultMode, "all") && !Is(request.ResultMode, "top"))
+    {
+        return "Mode hasil harus bernilai 'all' atau 'top'.";
+    }
+
+    if (Is(request.ResultMode, "top") &&
+        (request.Limit == null || request.Limit < 0))
+    {
+        return "Jumlah top-N harus bernilai minimal 0.";
+    }
+
+    return null;
+}
+
+static bool Is(string? value, string expected) =>
+    string.Equals(value, expected, StringComparison.OrdinalIgnoreCase);
+
+static SelectorQueryDto ToSelectorDto(SelectorQuery query) => new(
+    query.TagName,
+    query.Id,
+    query.Classes,
+    query.AttributeName,
+    query.AttributeValue,
+    query.RelationToPrevious.ToString()
+);
+
+static async Task<string> SaveTraversalLogAsync(string contentRootPath, TraversalLogFileDto log)
+{
+    var logsDirectory = Path.Combine(contentRootPath, "logs");
+    Directory.CreateDirectory(logsDirectory);
+
+    var fileName = $"traversal-{DateTimeOffset.UtcNow:yyyyMMddHHmmssfff}-{Guid.NewGuid():N}.json";
+    var filePath = Path.Combine(logsDirectory, fileName);
+    var options = new JsonSerializerOptions
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        WriteIndented = true
+    };
+
+    await File.WriteAllTextAsync(filePath, JsonSerializer.Serialize(log, options));
+    return fileName;
+}
+
+public sealed record AnalyzeRequest(
+    string? InputMode,
+    string? Url,
+    string? Html,
+    string? Algorithm,
+    string? Selector,
+    string? ResultMode,
+    int? Limit
+);
+
+public sealed record AnalyzeResponse(
+    DomNodeDto Dom,
+    AnalysisStatsDto Stats,
+    List<TraversalLogDto> TraversalLog,
+    List<ResultNodeDto> Results,
+    List<AffectedGroupDto> AffectedGroups,
+    List<SelectorQueryDto> ParsedSelector,
+    string LogFileName
+);
+
+public sealed record AnalysisStatsDto(
+    int NodeCount,
+    int MaxDepth,
+    int VisitedCount,
+    int TotalMatches,
+    int DisplayedMatches,
+    double ScrapeMilliseconds,
+    double ParseMilliseconds,
+    double SearchMilliseconds
+);
+
+public sealed record DomNodeDto(
+    int NodeId,
+    string TagName,
+    string Label,
+    string Id,
+    List<string> Classes,
+    Dictionary<string, string> Attributes,
+    int Depth,
+    int ChildCount,
+    string Path,
+    List<DomNodeDto> Children
+);
+
+public sealed record TraversalLogDto(
+    int Order,
+    int NodeId,
+    string Label,
+    string TagName,
+    int Depth,
+    string Path,
+    bool IsSolution,
+    bool IsAffected
+);
+
+public sealed record ResultNodeDto(
+    int Rank,
+    int NodeId,
+    string Label,
+    string TagName,
+    string Id,
+    List<string> Classes,
+    Dictionary<string, string> Attributes,
+    int Depth,
+    string Path
+);
+
+public sealed record AffectedGroupDto(int Level, List<int> NodeIds);
+
+public sealed record SelectorQueryDto(
+    string TagName,
+    string Id,
+    List<string> Classes,
+    string AttributeName,
+    string AttributeValue,
+    string RelationToPrevious
+);
+
+public sealed record ErrorResponse(string Error);
+
+public sealed record TraversalLogFileDto(
+    DateTimeOffset CreatedAt,
+    string InputMode,
+    string Algorithm,
+    string Selector,
+    AnalysisStatsDto Stats,
+    List<TraversalLogDto> TraversalLog,
+    List<ResultNodeDto> Results,
+    List<AffectedGroupDto> AffectedGroups,
+    List<SelectorQueryDto> ParsedSelector
+);
+
+public sealed class DomResponseMapper
+{
+    private readonly Dictionary<HtmlNode, int> _nodeIds = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<HtmlNode, string> _paths = new(ReferenceEqualityComparer.Instance);
+
+    public int NodeCount { get; private set; }
+    public int MaxDepth { get; private set; }
+
+    public DomNodeDto ToDto(HtmlNode root)
+    {
+        NodeCount = 0;
+        MaxDepth = 0;
+        _nodeIds.Clear();
+        _paths.Clear();
+        return Build(root, "document", 1);
+    }
+
+    public bool HasNodeId(HtmlNode node) => _nodeIds.ContainsKey(node);
+
+    public int GetNodeId(HtmlNode node) => _nodeIds[node];
+
+    public TraversalLogDto ToTraversalDto(HtmlNode node, int order, bool isSolution, bool isAffected)
+    {
+        return new TraversalLogDto(
+            order,
+            GetNodeId(node),
+            GetLabel(node),
+            node.TagName,
+            node.Depth,
+            _paths[node],
+            isSolution,
+            isAffected
+        );
+    }
+
+    public ResultNodeDto ToResultDto(HtmlNode node, int rank)
+    {
+        return new ResultNodeDto(
+            rank,
+            GetNodeId(node),
+            GetLabel(node),
+            node.TagName,
+            node.Id,
+            node.Classes.ToList(),
+            new Dictionary<string, string>(node.Attributes),
+            node.Depth,
+            _paths[node]
+        );
+    }
+
+    private DomNodeDto Build(HtmlNode node, string parentPath, int siblingIndex)
+    {
+        NodeCount++;
+        MaxDepth = Math.Max(MaxDepth, node.Depth);
+
+        var nodeId = NodeCount;
+        _nodeIds[node] = nodeId;
+
+        var label = GetLabel(node);
+        var path = node.Depth == 0
+            ? label
+            : $"{parentPath} > {label}:nth-child({siblingIndex})";
+        _paths[node] = path;
+
+        var children = node.Children
+            .Select((child, index) => Build(child, path, index + 1))
+            .ToList();
+
+        return new DomNodeDto(
+            nodeId,
+            node.TagName,
+            label,
+            node.Id,
+            node.Classes.ToList(),
+            new Dictionary<string, string>(node.Attributes),
+            node.Depth,
+            node.Children.Count,
+            path,
+            children
+        );
+    }
+
+    private static string GetLabel(HtmlNode node)
+    {
+        var label = node.TagName;
+        if (!string.IsNullOrWhiteSpace(node.Id))
+        {
+            label += $"#{node.Id}";
         }
 
-        static void PrintTree(HtmlNode node, string indent)
+        if (node.Classes.Count > 0)
         {
-            string classList = node.Classes.Count > 0 ? $" .{string.Join(".", node.Classes)}" : "";
-            string idLabel = !string.IsNullOrEmpty(node.Id) ? $" #{node.Id}" : "";
-            
-            Console.WriteLine($"{indent}<{node.TagName}>{idLabel}{classList}");
-            
-            foreach (var child in node.Children)
-            {
-                PrintTree(child, indent + "  ");
-            }
+            label += "." + string.Join(".", node.Classes);
         }
 
-
-        static void PrintList(List<HtmlNode> listnode, int n = -1)
-        {
-            int cnt = 0;
-            foreach (var node in listnode)
-            {
-                string id = node.Id == "" ? "No ID" : node.Id;
-                string classList = node.Classes.Count > 0 ? $" .{string.Join(".", node.Classes)}" : "<no class>"; 
-                Console.WriteLine($"[{id}]: {node.TagName} <{classList}> of depth {node.Depth}");
-                cnt++;
-                if (cnt == n)
-                {
-                    break;
-                }
-            }
-            Console.WriteLine($"Banyak hasil: {cnt}");
-        }
-        static void PrintSearchResult(SearchResult sr, int n)
-        {
-            Console.WriteLine("\n\n ================== HASIL TRAVERSAL ====================\n");
-            PrintList(sr.TraversalLog);
-            Console.WriteLine("\n\n ================== AFFECTED NODES ====================\n");
-            foreach (var ls in sr.AffectedNodes)
-            {
-                PrintList(ls);
-            }
-            Console.WriteLine("\n\n ================== SOLUTION NODES ====================\n");
-            PrintList(sr.SolutionNodes, n);
-            Console.WriteLine($"Banyak solusi sesungguhnya: {sr.SolutionNodes.Count}");
-        }
+        return label;
     }
 }

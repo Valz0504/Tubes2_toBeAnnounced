@@ -1,5 +1,6 @@
 bin/
 obj/
+/build/
 
 *.sln
 *.user
@@ -13,6 +14,7 @@ node_modules/
 
 dist/
 /frontend/dist/
+/backend/logs/
 
 *.log
 bun.lockb
