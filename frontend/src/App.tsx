@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent, type PointerEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type PointerEvent } from 'react'
 import './App.css'
 
 type InputMode = 'url' | 'html'
@@ -372,7 +372,6 @@ function App() {
   
   const [response, setResponse] = useState<AnalyzeResponse | null>(null)
   const [error, setError] = useState('')
-  const [isLoading, setIsLoading] = useState(false)
   const [selectedNodeId, setSelectedNodeId] = useState<number | null>(null)
   const [playbackStep, setPlaybackStep] = useState(0)
   const [isPlaying, setIsPlaying] = useState(false)
