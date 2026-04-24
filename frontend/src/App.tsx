@@ -5,7 +5,8 @@ type InputMode = 'url' | 'html'
 type Algorithm = 'bfs' | 'dfs'
 type ResultMode = 'all' | 'top'
 type Theme = 'light' | 'dark'
-type ViewMode = 'idle' | 'tree' | 'traversal' // <-- TAMBAHAN STATE BARU
+type ViewMode = 'idle' | 'tree' | 'traversal'
+type TabMode = 'app' | 'about'
 
 interface DomNode {
   nodeId: number
@@ -358,6 +359,7 @@ function describeSelector(query: SelectorQuery) {
 
 function App() {
   const [theme, setTheme] = useState<Theme>(getInitialTheme)
+  const [activeTab, setActiveTab] = useState<TabMode>('app')
   const [inputMode, setInputMode] = useState<InputMode>('html')
   const [url, setUrl] = useState('https://example.com')
   const [html, setHtml] = useState(sampleHtml)
@@ -444,7 +446,7 @@ function App() {
 
   useEffect(() => {
     const stageElement = treeStageRef.current
-    if (!stageElement) return
+    if (!stageElement || activeTab !== 'app') return
 
     function handleNativeWheel(event: globalThis.WheelEvent) {
       const currentLayout = layoutRef.current
@@ -471,7 +473,7 @@ function App() {
 
     stageElement.addEventListener('wheel', handleNativeWheel, { passive: false })
     return () => stageElement.removeEventListener('wheel', handleNativeWheel)
-  }, [])
+  }, [activeTab])
 
   const nodeLookup = useMemo(() => (response ? flattenTree(response.dom) : new Map<number, DomNode>()), [response])
 
@@ -682,288 +684,204 @@ function App() {
             />
           </span>
           <div>
-            <h1>DOM Traversal</h1>
+            <h1>toBeAnnounced</h1>
             <span>IF2211 Strategi Algoritma</span>
           </div>
         </div>
 
-        <button
-          className="theme-toggle"
-          type="button"
-          onClick={() => setTheme((current) => (current === 'dark' ? 'light' : 'dark'))}
-          aria-label="Ganti tema"
-        >
+        <nav className="nav-tabs">
+          <button className={activeTab === 'app' ? 'active' : ''} onClick={() => setActiveTab('app')} type="button">
+            Home
+          </button>
+          <button className={activeTab === 'about' ? 'active' : ''} onClick={() => setActiveTab('about')} type="button">
+            About Us
+          </button>
+        </nav>
+
+        <button className="theme-toggle" type="button" onClick={() => setTheme((current) => (current === 'dark' ? 'light' : 'dark'))} aria-label="Ganti tema">
           <Icon name={theme === 'dark' ? 'sun' : 'moon'} />
-          {theme === 'dark' ? 'Light Mode' : 'Dark Mode'}
+          <span className="theme-text">{theme === 'dark' ? 'Light Mode' : 'Dark Mode'}</span>
         </button>
       </header>
 
-      <main className="workspace">
-        <aside className="sidebar">
-          <div className="control-panel">
-            <section className="control-section">
-              <h2>1. Input HTML</h2>
-              <div className="segmented" role="group" aria-label="Mode input">
-                <button className={inputMode === 'url' ? 'active' : ''} type="button" onClick={() => setInputMode('url')}>
-                  <Icon name="link" /> URL
+      {activeTab === 'app' ? (
+        <main className="workspace">
+          <aside className="sidebar">
+            <div className="control-panel">
+              <section className="control-section">
+                <h2>Input HTML</h2>
+                <div className="segmented" role="group" aria-label="Mode input">
+                  <button className={inputMode === 'url' ? 'active' : ''} type="button" onClick={() => setInputMode('url')}><Icon name="link" /> URL</button>
+                  <button className={inputMode === 'html' ? 'active' : ''} type="button" onClick={() => setInputMode('html')}><Icon name="code" /> HTML</button>
+                </div>
+                {inputMode === 'url' ? (
+                  <label className="field"><span>URL website</span><input value={url} onChange={(event) => setUrl(event.target.value)} /></label>
+                ) : (
+                  <label className="field"><span>Teks HTML</span><textarea value={html} onChange={(event) => setHtml(event.target.value)} /></label>
+                )}
+                <button className="primary-action" disabled={isParsing || isSearching} type="button" onClick={handleParse} style={{ marginTop: '4px' }}>
+                  <Icon name="code" />{isParsing ? 'Mem-parse...' : 'Parse HTML'}
                 </button>
-                <button className={inputMode === 'html' ? 'active' : ''} type="button" onClick={() => setInputMode('html')}>
-                  <Icon name="code" /> HTML
+              </section>
+
+              <section className={`control-section ${viewMode === 'idle' ? 'disabled-section' : ''}`}>
+                <h2>CSS Selector</h2>
+                <label className="field"><span>CSS selector</span><input value={selector} onChange={(event) => setSelector(event.target.value)} disabled={viewMode === 'idle'} /></label>
+                <div className="segmented" role="group" aria-label="Algoritma traversal">
+                  <button className={algorithm === 'bfs' ? 'active' : ''} type="button" onClick={() => setAlgorithm('bfs')} disabled={viewMode === 'idle'}>BFS</button>
+                  <button className={algorithm === 'dfs' ? 'active' : ''} type="button" onClick={() => setAlgorithm('dfs')} disabled={viewMode === 'idle'}>DFS</button>
+                </div>
+                <div className="result-options">
+                  <label className="radio-row"><input checked={resultMode === 'all'} name="result-mode" type="radio" onChange={() => setResultMode('all')} disabled={viewMode === 'idle'} />Semua kemunculan</label>
+                  <label className="radio-row"><input checked={resultMode === 'top'} name="result-mode" type="radio" onChange={() => setResultMode('top')} disabled={viewMode === 'idle'} />Top<input className="number-input" disabled={resultMode !== 'top' || viewMode === 'idle'} min={0} type="number" value={limit} onChange={(event) => setLimit(Number(event.target.value))} /></label>
+                </div>
+                <button className="primary-action" disabled={viewMode === 'idle' || isParsing || isSearching} type="button" onClick={handleTraverse} style={{ marginTop: '4px' }}>
+                  <Icon name="search" />{isSearching ? 'Mencari...' : 'Jalankan Traversal'}
                 </button>
+              </section>
+              {error ? <p className="error-message">{error}</p> : null}
+            </div>
+          </aside>
+
+          <section className={isTreeFullscreen ? 'visual-area fullscreen-active' : 'visual-area'} ref={visualAreaRef}>
+            <div className="visual-toolbar">
+              <div>
+                <h2>Visualisasi</h2>
+                <span>{response ? `${response.stats.nodeCount} node, kedalaman maksimum ${response.stats.maxDepth}, depth tampil ${visibleDepth}` : 'Belum ada hasil analisis'}</span>
               </div>
-
-              {inputMode === 'url' ? (
-                <label className="field">
-                  <span>URL website</span>
-                  <input value={url} onChange={(event) => setUrl(event.target.value)} />
-                </label>
-              ) : (
-                <label className="field">
-                  <span>Teks HTML</span>
-                  <textarea value={html} onChange={(event) => setHtml(event.target.value)} />
-                </label>
-              )}
-              
-              <button 
-                className="primary-action" 
-                disabled={isParsing || isSearching} 
-                type="button" 
-                onClick={handleParse}
-                style={{ marginTop: '4px' }}
-              >
-                <Icon name="code" />
-                {isParsing ? 'Mem-parse...' : 'Parse HTML'}
-              </button>
-            </section>
-
-            <section className={`control-section ${viewMode === 'idle' ? 'disabled-section' : ''}`}>
-              <h2>2. Traversal CSS</h2>
-              <label className="field">
-                <span>CSS selector</span>
-                <input value={selector} onChange={(event) => setSelector(event.target.value)} disabled={viewMode === 'idle'} />
-              </label>
-
-              <div className="segmented" role="group" aria-label="Algoritma traversal">
-                <button className={algorithm === 'bfs' ? 'active' : ''} type="button" onClick={() => setAlgorithm('bfs')} disabled={viewMode === 'idle'}>
-                  BFS
-                </button>
-                <button className={algorithm === 'dfs' ? 'active' : ''} type="button" onClick={() => setAlgorithm('dfs')} disabled={viewMode === 'idle'}>
-                  DFS
-                </button>
+              <div className="toolbar-tools">
+                <div className="depth-controls">
+                  <span>Depth</span><input disabled={!response} max={response?.stats.maxDepth ?? 1} min={response && response.stats.maxDepth > 0 ? 1 : 0} step={1} type="range" value={visibleDepth} onChange={(event) => handleVisibleDepthChange(Number(event.target.value))} /><strong>{visibleDepth}</strong>
+                </div>
+                <div className="playback">
+                  <button className="icon-button" disabled={!response || viewMode !== 'traversal'} type="button" onClick={handlePlayPause}><Icon name={isPlaying ? 'pause' : 'play'} /></button>
+                  <input disabled={!response || viewMode !== 'traversal'} max={response?.traversalLog.length ?? 0} min={0} type="range" value={playbackStep} onChange={(event) => setPlaybackStep(Number(event.target.value))} /><span>{playbackStep}/{response?.traversalLog.length ?? 0}</span>
+                </div>
+                <div className="zoom-controls">
+                  <button className="icon-button" disabled={!response} title="Zoom out" type="button" onClick={() => setZoom((current) => clamp(current - 0.1, minZoom, maxZoom))}><Icon name="zoomOut" /></button>
+                  <input disabled={!response} max={maxZoom} min={minZoom} step={0.05} type="range" value={zoom} onChange={(event) => setZoom(Number(event.target.value))} /><span>{Math.round(zoom * 100)}%</span>
+                  <button className="icon-button" disabled={!response} title="Zoom in" type="button" onClick={() => setZoom((current) => clamp(current + 0.1, minZoom, maxZoom))}><Icon name="zoomIn" /></button>
+                  <button className="icon-button" disabled={!response} title="Reset view" type="button" onClick={resetTreeView}><Icon name="reset" /></button>
+                  <button className="icon-button" title={isTreeFullscreen ? 'Exit fullscreen' : 'Fullscreen'} type="button" onClick={toggleTreeFullscreen}><Icon name={isTreeFullscreen ? 'fullscreenExit' : 'fullscreen'} /></button>
+                </div>
               </div>
-
-              <div className="result-options">
-                <label className="radio-row">
-                  <input checked={resultMode === 'all'} name="result-mode" type="radio" onChange={() => setResultMode('all')} disabled={viewMode === 'idle'} />
-                  Semua kemunculan
-                </label>
-                <label className="radio-row">
-                  <input checked={resultMode === 'top'} name="result-mode" type="radio" onChange={() => setResultMode('top')} disabled={viewMode === 'idle'} />
-                  Top
-                  <input className="number-input" disabled={resultMode !== 'top' || viewMode === 'idle'} min={0} type="number" value={limit} onChange={(event) => setLimit(Number(event.target.value))} />
-                </label>
-              </div>
-
-              <button 
-                className="primary-action" 
-                disabled={viewMode === 'idle' || isParsing || isSearching} 
-                type="button" 
-                onClick={handleTraverse}
-                style={{ marginTop: '4px' }}
-              >
-                <Icon name="search" />
-                {isSearching ? 'Mencari...' : 'Jalankan Traversal'}
-              </button>
-            </section>
-
-            {error ? <p className="error-message">{error}</p> : null}
-          </div>
-        </aside>
-
-        <section className={isTreeFullscreen ? 'visual-area fullscreen-active' : 'visual-area'} ref={visualAreaRef}>
-          <div className="visual-toolbar">
-            <div>
-              <h2>Visualisasi DOM Tree</h2>
-              <span>
-                {response
-                  ? `${response.stats.nodeCount} node, kedalaman maksimum ${response.stats.maxDepth}, depth tampil ${visibleDepth}`
-                  : 'Belum ada hasil analisis'}
-              </span>
             </div>
 
-            <div className="toolbar-tools">
-              <div className="depth-controls">
-                <span>Depth</span>
-                <input disabled={!response} max={response?.stats.maxDepth ?? 1} min={response && response.stats.maxDepth > 0 ? 1 : 0} step={1} type="range" value={visibleDepth} onChange={(event) => handleVisibleDepthChange(Number(event.target.value))} />
-                <strong>{visibleDepth}</strong>
-              </div>
-
-              <div className="playback">
-                <button className="icon-button" disabled={!response || viewMode !== 'traversal'} type="button" onClick={handlePlayPause}>
-                  <Icon name={isPlaying ? 'pause' : 'play'} />
-                </button>
-                <input disabled={!response || viewMode !== 'traversal'} max={response?.traversalLog.length ?? 0} min={0} type="range" value={playbackStep} onChange={(event) => setPlaybackStep(Number(event.target.value))} />
-                <span>{playbackStep}/{response?.traversalLog.length ?? 0}</span>
-              </div>
-
-              <div className="zoom-controls">
-                <button className="icon-button" disabled={!response} title="Zoom out" type="button" onClick={() => setZoom((current) => clamp(current - 0.1, minZoom, maxZoom))}><Icon name="zoomOut" /></button>
-                <input disabled={!response} max={maxZoom} min={minZoom} step={0.05} type="range" value={zoom} onChange={(event) => setZoom(Number(event.target.value))} />
-                <span>{Math.round(zoom * 100)}%</span>
-                <button className="icon-button" disabled={!response} title="Zoom in" type="button" onClick={() => setZoom((current) => clamp(current + 0.1, minZoom, maxZoom))}><Icon name="zoomIn" /></button>
-                <button className="icon-button" disabled={!response} title="Reset view" type="button" onClick={resetTreeView}><Icon name="reset" /></button>
-                <button className="icon-button" title={isTreeFullscreen ? 'Exit fullscreen' : 'Fullscreen'} type="button" onClick={toggleTreeFullscreen}><Icon name={isTreeFullscreen ? 'fullscreenExit' : 'fullscreen'} /></button>
-              </div>
-            </div>
-          </div>
-
-          <div className={dragState ? 'tree-stage dragging' : 'tree-stage'} onPointerCancel={finishTreeDrag} onPointerDown={handleTreePointerDown} onPointerMove={handleTreePointerMove} onPointerUp={finishTreeDrag} ref={treeStageRef}>
-            {layout ? (
-              <div className={layout.config.compact ? 'tree-transform compact' : 'tree-transform'} style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }}>
-                <div className="tree-canvas" style={{ width: layout.width, height: layout.height }}>
-                  <svg className="tree-edges" width={layout.width} height={layout.height}>
-                    {layout.edges.map((edge) => {
-                      const from = layout.nodeMap.get(edge.from)
-                      const to = layout.nodeMap.get(edge.to)
-                      if (!from || !to) return null
-                      
-                      const isEdgeActive = viewMode === 'traversal' && activeTraversalIds.has(to.nodeId)
-
+            <div className={dragState ? 'tree-stage dragging' : 'tree-stage'} onPointerCancel={finishTreeDrag} onPointerDown={handleTreePointerDown} onPointerMove={handleTreePointerMove} onPointerUp={finishTreeDrag} ref={treeStageRef}>
+              {layout ? (
+                <div className={layout.config.compact ? 'tree-transform compact' : 'tree-transform'} style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }}>
+                  <div className="tree-canvas" style={{ width: layout.width, height: layout.height }}>
+                    <svg className="tree-edges" width={layout.width} height={layout.height}>
+                      {layout.edges.map((edge) => {
+                        const from = layout.nodeMap.get(edge.from)
+                        const to = layout.nodeMap.get(edge.to)
+                        if (!from || !to) return null
+                        const isEdgeActive = viewMode === 'traversal' && activeTraversalIds.has(to.nodeId)
+                        return (
+                          <path
+                            className={isEdgeActive ? 'edge active' : 'edge'}
+                            d={`M ${from.x + layout.config.nodeWidth / 2} ${from.y + layout.config.nodeHeight} C ${from.x + layout.config.nodeWidth / 2} ${from.y + layout.config.nodeHeight + 24}, ${to.x + layout.config.nodeWidth / 2} ${to.y - 24}, ${to.x + layout.config.nodeWidth / 2} ${to.y}`}
+                            key={`${edge.from}-${edge.to}`}
+                          />
+                        )
+                      })}
+                    </svg>
+                    {layout.nodes.map((node) => {
+                      const isVisited = viewMode === 'traversal' && activeTraversalIds.has(node.nodeId)
+                      const isSolution = viewMode === 'traversal' && solutionNodeIds.has(node.nodeId)
+                      const isAffected = viewMode === 'traversal' && affectedNodeIds.has(node.nodeId)
+                      const isCurrent = viewMode === 'traversal' && currentTraversalNodeId === node.nodeId
+                      const isSelected = selectedNodeId === node.nodeId
                       return (
-                        <path
-                          className={isEdgeActive ? 'edge active' : 'edge'}
-                          d={`M ${from.x + layout.config.nodeWidth / 2} ${from.y + layout.config.nodeHeight} C ${from.x + layout.config.nodeWidth / 2} ${from.y + layout.config.nodeHeight + 24}, ${to.x + layout.config.nodeWidth / 2} ${to.y - 24}, ${to.x + layout.config.nodeWidth / 2} ${to.y}`}
-                          key={`${edge.from}-${edge.to}`}
-                        />
+                        <button
+                          className={['tree-node', layout.config.compact ? 'compact' : '', node.isSummary ? 'summary' : '', isVisited ? 'visited' : '', isAffected ? 'affected' : '', isSolution ? 'solution' : '', isSelected ? 'selected' : '', isCurrent ? 'current' : ''].filter(Boolean).join(' ')}
+                          disabled={node.isSummary} key={node.nodeId} style={{ left: node.x, top: node.y, width: layout.config.nodeWidth, height: layout.config.nodeHeight }} title={node.path} type="button" onClick={() => setSelectedNodeId(node.nodeId)}
+                        >
+                          <span className="node-label">{node.label}</span>
+                          <span className="node-meta">{node.isSummary ? `${node.hiddenCount} hidden` : `d${node.depth} / ${node.childCount} child`}</span>
+                        </button>
                       )
                     })}
-                  </svg>
-
-                  {layout.nodes.map((node) => {
-                    const isVisited = viewMode === 'traversal' && activeTraversalIds.has(node.nodeId)
-                    const isSolution = viewMode === 'traversal' && solutionNodeIds.has(node.nodeId)
-                    const isAffected = viewMode === 'traversal' && affectedNodeIds.has(node.nodeId)
-                    const isCurrent = viewMode === 'traversal' && currentTraversalNodeId === node.nodeId
-                    const isSelected = selectedNodeId === node.nodeId
-
-                    return (
-                      <button
-                        className={[
-                          'tree-node',
-                          layout.config.compact ? 'compact' : '',
-                          node.isSummary ? 'summary' : '',
-                          isVisited ? 'visited' : '',
-                          isAffected ? 'affected' : '',
-                          isSolution ? 'solution' : '',
-                          isSelected ? 'selected' : '',
-                          isCurrent ? 'current' : '',
-                        ].filter(Boolean).join(' ')}
-                        disabled={node.isSummary}
-                        key={node.nodeId}
-                        style={{ left: node.x, top: node.y, width: layout.config.nodeWidth, height: layout.config.nodeHeight }}
-                        title={node.path}
-                        type="button"
-                        onClick={() => setSelectedNodeId(node.nodeId)}
-                      >
-                        <span className="node-label">{node.label}</span>
-                        <span className="node-meta">{node.isSummary ? `${node.hiddenCount} hidden` : `d${node.depth} / ${node.childCount} child`}</span>
-                      </button>
-                    )
-                  })}
+                  </div>
                 </div>
-              </div>
-            ) : (
-              <div className="empty-state">
-                <Icon name="graph" />
-                <h2>Masukkan HTML di sebelah kiri</h2>
-              </div>
-            )}
-          </div>
-        </section>
-
-        <aside className="inspector">
-          <section className="stats-grid" aria-label="Statistik traversal">
-            <div><span>Visited</span><strong>{viewMode === 'traversal' ? (response?.stats.visitedCount ?? 0) : '-'}</strong></div>
-            <div><span>Match</span><strong>{viewMode === 'traversal' ? (response?.stats.totalMatches ?? 0) : '-'}</strong></div>
-            <div><span>Ditampilkan</span><strong>{viewMode === 'traversal' ? (response?.stats.displayedMatches ?? 0) : '-'}</strong></div>
-            <div><span>Search</span><strong>{viewMode === 'traversal' && response ? formatMs(response.stats.searchMilliseconds) : '- ms'}</strong></div>
-          </section>
-
-          <section className="detail-panel">
-            <div className="panel-heading"><Icon name="target" /><h2>Node Detail</h2></div>
-            {selectedNode ? (
-              <div className="node-detail">
-                <strong>{selectedNode.label}</strong>
-                <span>Tag: {selectedNode.tagName}</span>
-                <span>Depth: {selectedNode.depth}</span>
-                <span>Children: {selectedNode.childCount}</span>
-                {selectedNode.id ? <span>ID: {selectedNode.id}</span> : null}
-                {selectedNode.classes.length > 0 ? <span>Class: {selectedNode.classes.join(', ')}</span> : null}
-                <code>{selectedNode.path}</code>
-              </div>
-            ) : <p className="muted">Pilih node pada tree atau log.</p>}
-          </section>
-
-          <section className="detail-panel">
-            <div className="panel-heading"><Icon name="search" /><h2>Selector</h2></div>
-            {viewMode === 'traversal' && response?.parsedSelector.length ? (
-              <>
-                <div className="selector-list">
-                  {response.parsedSelector.map((query, index) => (
-                    <span className="selector-chip" key={`${query.relationToPrevious}-${query.tagName}-${index}`}>{describeSelector(query)}</span>
-                  ))}
-                </div>
-                <p className="log-file">Log: {response.logFileName}</p>
-              </>
-            ) : <p className="muted">Lakukan traversal untuk melihat selector.</p>}
-          </section>
-
-          <section className="detail-panel results-panel">
-            <div className="panel-heading"><Icon name="target" /><h2>Hasil</h2></div>
-            <div className="scroll-list">
-              {viewMode === 'traversal' && response?.results.length ? (
-                response.results.map((result) => (
-                  <button className={selectedNodeId === result.nodeId ? 'list-row selected' : 'list-row'} key={`${result.rank}-${result.nodeId}`} type="button" onClick={() => setSelectedNodeId(result.nodeId)}>
-                    <strong>#{result.rank}</strong><span>{result.label}</span><small>d{result.depth}</small>
-                  </button>
-                ))
-              ) : <p className="muted">{viewMode === 'tree' ? 'Lakukan traversal untuk melihat hasil.' : 'Belum ada hasil.'}</p>}
-            </div>
-          </section>
-
-          <section className="detail-panel log-panel">
-            <div className="panel-heading"><Icon name="list" /><h2>Traversal Log</h2></div>
-            <div className="scroll-list">
-              {viewMode === 'traversal' && response?.traversalLog.length ? (
-                response.traversalLog.map((item) => (
-                  <button
-                    className={[
-                      'list-row',
-                      item.isAffected ? 'affected' : '',
-                      item.isSolution ? 'solution' : '',
-                      selectedNodeId === item.nodeId ? 'selected' : '',
-                    ]
-                      .filter(Boolean)
-                      .join(' ')}
-                    key={`${item.order}-${item.nodeId}`}
-                    type="button"
-                    onClick={() => {
-                      setSelectedNodeId(item.nodeId)
-                      setPlaybackStep(item.order)
-                    }}
-                  >
-                    <strong>{item.order}</strong>
-                    <span>{item.label}</span>
-                    <small>d{item.depth}</small>
-                  </button>
-                ))
               ) : (
-                <p className="muted">Log akan muncul setelah pencarian.</p>
+                <div className="empty-state">
+                  <Icon name="graph" /><h2>Masukkan HTML di sebelah kiri</h2>
+                </div>
               )}
             </div>
           </section>
-        </aside>
-      </main>
+
+          <aside className="inspector">
+            <section className="stats-grid" aria-label="Statistik traversal">
+              <div><span>Visited</span><strong>{viewMode === 'traversal' ? (response?.stats.visitedCount ?? 0) : '-'}</strong></div>
+              <div><span>Match</span><strong>{viewMode === 'traversal' ? (response?.stats.totalMatches ?? 0) : '-'}</strong></div>
+              <div><span>Ditampilkan</span><strong>{viewMode === 'traversal' ? (response?.stats.displayedMatches ?? 0) : '-'}</strong></div>
+              <div><span>Search</span><strong>{viewMode === 'traversal' && response ? formatMs(response.stats.searchMilliseconds) : '- ms'}</strong></div>
+            </section>
+            <section className="detail-panel">
+              <div className="panel-heading"><Icon name="target" /><h2>Node Detail</h2></div>
+              {selectedNode ? (
+                <div className="node-detail">
+                  <strong>{selectedNode.label}</strong><span>Tag: {selectedNode.tagName}</span><span>Depth: {selectedNode.depth}</span><span>Children: {selectedNode.childCount}</span>{selectedNode.id ? <span>ID: {selectedNode.id}</span> : null}{selectedNode.classes.length > 0 ? <span>Class: {selectedNode.classes.join(', ')}</span> : null}<code>{selectedNode.path}</code>
+                </div>
+              ) : <p className="muted">Pilih node pada tree atau log.</p>}
+            </section>
+            <section className="detail-panel">
+              <div className="panel-heading"><Icon name="search" /><h2>Selector</h2></div>
+              {viewMode === 'traversal' && response?.parsedSelector.length ? (
+                <><div className="selector-list">{response.parsedSelector.map((query, index) => (<span className="selector-chip" key={`${query.relationToPrevious}-${query.tagName}-${index}`}>{describeSelector(query)}</span>))}</div><p className="log-file">Log: {response.logFileName}</p></>
+              ) : <p className="muted">Lakukan traversal untuk melihat selector.</p>}
+            </section>
+            <section className="detail-panel results-panel">
+              <div className="panel-heading"><Icon name="target" /><h2>Hasil</h2></div>
+              <div className="scroll-list">
+                {viewMode === 'traversal' && response?.results.length ? (
+                  response.results.map((result) => (<button className={selectedNodeId === result.nodeId ? 'list-row selected' : 'list-row'} key={`${result.rank}-${result.nodeId}`} type="button" onClick={() => setSelectedNodeId(result.nodeId)}><strong>#{result.rank}</strong><span>{result.label}</span><small>d{result.depth}</small></button>))
+                ) : <p className="muted">{viewMode === 'tree' ? 'Lakukan traversal untuk melihat hasil.' : 'Belum ada hasil.'}</p>}
+              </div>
+            </section>
+            <section className="detail-panel log-panel">
+              <div className="panel-heading"><Icon name="list" /><h2>Traversal Log</h2></div>
+              <div className="scroll-list">
+                {viewMode === 'traversal' && response?.traversalLog.length ? (
+                  response.traversalLog.map((item) => (<button className={['list-row', item.isAffected ? 'affected' : '', item.isSolution ? 'solution' : '', selectedNodeId === item.nodeId ? 'selected' : ''].filter(Boolean).join(' ')} key={`${item.order}-${item.nodeId}`} type="button" onClick={() => { setSelectedNodeId(item.nodeId); setPlaybackStep(item.order) }}><strong>{item.order}</strong><span>{item.label}</span><small>d{item.depth}</small></button>))
+                ) : <p className="muted">Log akan muncul setelah pencarian.</p>}
+              </div>
+            </section>
+          </aside>
+        </main>
+      ) : (
+        <main className="about-page">
+          <div className="about-header">
+            <h2>toBeAnnounced - Developers</h2>
+            <p>Tugas Besar 2 IF2211 Strategi Algoritma</p>
+          </div>
+          <div className="team-grid">
+            <div className="team-card">
+              <div className="avatar-container">
+                <img src="/owen.png" alt="Ray Owen Martin" className="avatar-img" />
+              </div>
+              <h3>Ray Owen Martin</h3>
+              <span className="nim">13524033</span>
+            </div>
+            <div className="team-card">
+              <div className="avatar-container">
+                <img src="/emilio.png" alt="Emilio Justin" className="avatar-img" />
+              </div>
+              <h3>Emilio Justin</h3>
+              <span className="nim">13524043</span>
+            </div>
+            <div className="team-card">
+              <div className="avatar-container">
+                <img src="/farrell.png" alt="Farrell Limjaya" className="avatar-img" />
+              </div>
+              <h3>Farrell Limjaya</h3>
+              <span className="nim">13524101</span>
+            </div>
+          </div>
+        </main>
+      )}
     </div>
   )
 }
