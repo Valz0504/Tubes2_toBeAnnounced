@@ -779,8 +779,22 @@
   }
 
   .topbar {
-    align-items: flex-start;
-    flex-direction: column;
+    align-items: center;
+    flex-direction: row;
+    padding: 12px 16px;
+    gap: 12px;
+  }
+
+  .brand h1 {
+    font-size: 18px;
+  }
+
+  .theme-toggle {
+    font-size: 0;
+    padding: 0;
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
   }
 
   .workspace {
@@ -798,9 +812,17 @@
     grid-template-columns: 1fr;
   }
 
+  .visual-area {
+    min-height: 65vh;
+    border-bottom: 1px solid var(--border);
+  }
+
   .visual-toolbar {
-    align-items: stretch;
+    flex: 0 0 auto; 
     flex-direction: column;
+    align-items: stretch;
+    padding: 14px;
+    gap: 12px;
   }
 
   .toolbar-tools {
@@ -808,21 +830,36 @@
     flex-direction: column;
     min-width: 0;
     width: 100%;
+    gap: 12px;
+  }
+
+  .depth-controls,
+  .playback,
+  .zoom-controls {
+    flex: none;
+    width: 100%;
   }
 
   .playback {
-    grid-template-columns: 40px minmax(0, 1fr) 70px;
+    grid-template-columns: 40px minmax(0, 1fr) 50px;
   }
 
   .depth-controls {
-    grid-template-columns: auto minmax(0, 1fr) 32px;
+    grid-template-columns: 45px minmax(0, 1fr) 28px;
   }
 
   .zoom-controls {
-    grid-template-columns: 34px minmax(0, 1fr) 52px 34px 34px 34px;
+    display: flex;
+    flex-wrap: wrap; 
+    justify-content: center;
+  }
+
+  .zoom-controls input[type='range'] {
+    flex: 1;
+    min-width: 100px;
   }
 
   .tree-stage {
-    min-height: 520px;
+    min-height: 400px;
   }
 }

@@ -682,7 +682,7 @@ function App() {
             />
           </span>
           <div>
-            <h1>DOM Traversal</h1>
+            <h1>toBeAnnounced</h1>
             <span>IF2211 Strategi Algoritma</span>
           </div>
         </div>
@@ -783,7 +783,7 @@ function App() {
         <section className={isTreeFullscreen ? 'visual-area fullscreen-active' : 'visual-area'} ref={visualAreaRef}>
           <div className="visual-toolbar">
             <div>
-              <h2>Visualisasi DOM Tree</h2>
+              <h2>Visualisasi</h2>
               <span>
                 {response
                   ? `${response.stats.nodeCount} node, kedalaman maksimum ${response.stats.maxDepth}, depth tampil ${visibleDepth}`
