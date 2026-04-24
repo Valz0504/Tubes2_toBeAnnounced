@@ -877,7 +877,7 @@ function App() {
                 <img src="/farrell.png" alt="Farrell Limjaya" className="avatar-img" />
               </div>
               <h3>Farrell Limjaya</h3>
-              <span className="nim">13524101</span>
+              <span className="nim">13524046</span>
             </div>
           </div>
         </main>
