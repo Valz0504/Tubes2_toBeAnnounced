@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type PointerEvent } from 'react'
 import './App.css'
 
 type InputMode = 'url' | 'html'
-type Algorithm = 'bfs' | 'dfs'
+type Algorithm = 'bfs' | 'dfs' | 'parallel-bfs'
 type ResultMode = 'all' | 'top'
 type Theme = 'light' | 'dark'
 type ViewMode = 'idle' | 'tree' | 'traversal'
@@ -32,6 +32,7 @@ interface AnalysisStats {
   scrapeMilliseconds: number
   parseMilliseconds: number
   searchMilliseconds: number
+  lcaResult?: string
 }
 
 interface TraversalLogItem {
@@ -507,7 +508,7 @@ function App() {
         body: JSON.stringify({
           inputMode, url, html,
           algorithm: 'bfs',
-          selector: '*', // Dummy selector agar backend meloloskan validasi
+          selector: '*',
           resultMode: 'all',
           limit: 10
         }),
@@ -727,9 +728,10 @@ function App() {
               <section className={`control-section ${viewMode === 'idle' ? 'disabled-section' : ''}`}>
                 <h2>CSS Selector</h2>
                 <label className="field"><span>CSS selector</span><input value={selector} onChange={(event) => setSelector(event.target.value)} disabled={viewMode === 'idle'} /></label>
-                <div className="segmented" role="group" aria-label="Algoritma traversal">
+                <div className="segmented" style={{ gridTemplateColumns: '1fr 1fr 1fr' }} role="group" aria-label="Algoritma traversal">
                   <button className={algorithm === 'bfs' ? 'active' : ''} type="button" onClick={() => setAlgorithm('bfs')} disabled={viewMode === 'idle'}>BFS</button>
                   <button className={algorithm === 'dfs' ? 'active' : ''} type="button" onClick={() => setAlgorithm('dfs')} disabled={viewMode === 'idle'}>DFS</button>
+                  <button className={algorithm === 'parallel-bfs' ? 'active' : ''} type="button" onClick={() => setAlgorithm('parallel-bfs')} disabled={viewMode === 'idle'} style={{ fontSize: '12px', padding: '0 4px' }}>Parallel<br/>BFS</button>
                 </div>
                 <div className="result-options">
                   <label className="radio-row"><input checked={resultMode === 'all'} name="result-mode" type="radio" onChange={() => setResultMode('all')} disabled={viewMode === 'idle'} />Semua kemunculan</label>
@@ -795,7 +797,8 @@ function App() {
                       return (
                         <button
                           className={['tree-node', layout.config.compact ? 'compact' : '', node.isSummary ? 'summary' : '', isVisited ? 'visited' : '', isAffected ? 'affected' : '', isSolution ? 'solution' : '', isSelected ? 'selected' : '', isCurrent ? 'current' : ''].filter(Boolean).join(' ')}
-                          disabled={node.isSummary} key={node.nodeId} style={{ left: node.x, top: node.y, width: layout.config.nodeWidth, height: layout.config.nodeHeight }} title={node.path} type="button" onClick={() => setSelectedNodeId(node.nodeId)}
+                          disabled={node.isSummary} key={node.nodeId} style={{ left: node.x, top: node.y, width: layout.config.nodeWidth, height: layout.config.nodeHeight }} title={node.path} type="button" 
+                          onClick={() => setSelectedNodeId(node.nodeId)}
                         >
                           <span className="node-label">{node.label}</span>
                           <span className="node-meta">{node.isSummary ? `${node.hiddenCount} hidden` : `d${node.depth} / ${node.childCount} child`}</span>
@@ -813,6 +816,15 @@ function App() {
           </section>
 
           <aside className="inspector">
+            {viewMode === 'traversal' && response?.stats.lcaResult && (
+              <section className="detail-panel" style={{ borderColor: 'var(--accent)', boxShadow: '0 0 0 1px var(--accent)' }}>
+                <div className="panel-heading"><Icon name="target" /><h2>Lowest Common Ancestor</h2></div>
+                <p className="muted" style={{ fontWeight: 600, color: 'var(--accent-strong)' }}>
+                  {response.stats.lcaResult}
+                </p>
+              </section>
+            )}
+
             <section className="stats-grid" aria-label="Statistik traversal">
               <div><span>Visited</span><strong>{viewMode === 'traversal' ? (response?.stats.visitedCount ?? 0) : '-'}</strong></div>
               <div><span>Match</span><strong>{viewMode === 'traversal' ? (response?.stats.totalMatches ?? 0) : '-'}</strong></div>
