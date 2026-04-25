@@ -1,5 +1,14 @@
 # Tubes2_toBeAnnounced
 
+Aplikasi berbasis web untuk memvisualisasikan struktur DOM dari sebuah URL atau potongan kode HTML, serta melakukan penelusuran elemen berdasarkan CSS selektor menggunakan algoritma BFS dan DFS.
+
+## Aplikasi BFS dan DFS
+1. Breadth-First Search (BFS)
+Menelusuri pohon DOM secara lapis demi lapis menggunakan Queue. BFS sangat optimal untuk menemukan elemen yang posisinya dangkal atau dekat dengan root.
+
+2. Depth-First Search (DFS)
+Menelusuri pohon DOM hingga ke elemen paling ujung sebelum backtrack. Dengan menggunakan Stack atau rekursif, DFS sangat efektif untuk mencari elemen yang bersarang sangat dalam.
+
 ## Tech Stack
 - **Backend:** C# (.NET)
 - **Frontend:** TypeScript (Bun + Vite)
@@ -30,13 +39,19 @@
 
 ### Docker
 
-Jalankan perintah ini di *root directory*:
+Sebelum menjalankan Web App dengan Docker Desktop, Anda perlu mengatur konfigurasi *environment variables* untuk menghubungkan *frontend* dengan *backend*.
+
+Buka direktori *frontend* dan buat file `.env` lalu tambahkan baris ini di dalamnya:
+```bash
+VITE_API_BASE_URL=http://localhost:5080
+```
+
+Setelah itu, jalankan perintah ini di *root directory*:
 ```bash
 docker-compose up -d --build
 ```
 
-- Frontend dapat diakses di: `http://localhost:5173`
-- Backend dapat diakses di : `http://loalhost:5080`
+Akses halaman Frontend di Docker Desktop
 
 Untuk mematikan aplikasi:
 ```bash
@@ -82,3 +97,5 @@ bun run dev
 | Ray Owen Martin.               | 13524033 | [Tensai-033](https://github.com/Tensai-033)
 | Emilio Justin                  | 13524043 | [Valz0504](https://github.com/Valz0504)
 | Farrell Limjaya                | 13524046 | [Defaro123](https://github.com/Defaro123)
+
+Tugas Besar 2 - IF2211 Strategi Algoritma
